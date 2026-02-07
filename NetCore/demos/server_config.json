@@ -1,0 +1,19 @@
+{
+    "api": {
+        "enable": true
+    },
+    "server": {
+        "host": "0.0.0.0",
+        "port": 8443,
+        "threads": 4
+    },
+    "ssl": {
+        "cert_path": "./cert.pem",
+        "key_path": "./pvtkey.pem",
+        "dh_path": "./dh2048.pem"
+    },
+    "static": {
+        "root_dir": "./www",
+        "default_file": "index.html"
+    }
+}

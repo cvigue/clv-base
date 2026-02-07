@@ -1,0 +1,33 @@
+language: c
+
+compiler:
+  - gcc
+  - clang
+
+dist: bionic
+
+matrix:
+  include:
+    - os: linux
+      arch: amd64
+    - os: linux
+      arch: arm64
+    - os: linux
+      arch: ppc64le
+
+addons:
+  apt:
+    update: true
+    packages:
+    - build-essential
+    - fakeroot
+    - debhelper
+    - libtool
+    - libtool-bin
+
+script:
+  # Build the package.
+  - (cd pkg && make deb)
+  # Run the unit and stress tests.
+  - (cd src && make tests)
+  - (cd src && make clean && make stress)

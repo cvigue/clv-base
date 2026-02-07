@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Server</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+        }
+
+        h1 {
+            text-align: center;
+            margin-top: 0;
+        }
+
+        .info {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+
+        .api-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .api-list li {
+            padding: 10px;
+            margin: 5px 0;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+        }
+
+        a {
+            color: #ffd700;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🚀 Simple Config-Driven Server</h1>
+
+        <div class="info">
+            <h2>Welcome!</h2>
+            <p>This is a simple HTTPS server built with ClvLib components:</p>
+            <ul>
+                <li>✅ Config system for JSON configuration</li>
+                <li>✅ HttpCore for HTTP/HTTPS protocol handling</li>
+                <li>✅ Static file serving</li>
+                <li>✅ API endpoint routing</li>
+                <li>✅ SSL/TLS support</li>
+            </ul>
+        </div>
+
+        <div class="info">
+            <h2>Available API Endpoints</h2>
+            <ul class="api-list">
+                <li>
+                    <code>GET /api/hello</code> -
+                    <a href="/api/hello">Test endpoint</a>
+                </li>
+                <li>
+                    <code>GET /api/config</code> -
+                    <a href="/api/config">Server configuration info</a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="info">
+            <h2>How It Works</h2>
+            <p>
+                The server loads configuration from <code>server_config.json</code> and serves:
+            </p>
+            <ol>
+                <li><strong>API Routes:</strong> Handled first by ApiRouter (<code>/api/*</code>)</li>
+                <li><strong>Static Files:</strong> Fallback to HttpStaticRouter for files in <code>www/</code></li>
+                <li><strong>404s:</strong> Automatic for unhandled routes</li>
+            </ol>
+        </div>
+
+        <div class="info" style="text-align: center;">
+            <p><em>Built with C++20 coroutines, ASIO, and OpenSSL</em></p>
+        </div>
+    </div>
+</body>
+
+</html>

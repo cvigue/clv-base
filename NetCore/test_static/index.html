@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HttpCore Test Server</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        h1 { color: #333; }
+        .section { margin: 20px 0; padding: 20px; background: #f5f5f5; border-radius: 5px; }
+        code { background: #e0e0e0; padding: 2px 5px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>HttpCore Test Server</h1>
+    <div class="section">
+        <h2>Welcome!</h2>
+        <p>This is a test server built with the HttpCore library.</p>
+    </div>
+
+    <div class="section">
+        <h2>Available Endpoints:</h2>
+        <ul>
+            <li><code>GET /</code> - This page</li>
+            <li><code>GET /test.txt</code> - Test text file</li>
+            <li><code>GET /api/hello</code> - Simple API greeting</li>
+            <li><code>GET /api/json</code> - JSON response example</li>
+            <li><code>POST /api/echo</code> - Echo back the request body</li>
+            <li><code>GET /api/headers</code> - Show request headers</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>Test Commands:</h2>
+        <pre>
+# Basic GET request
+curl -k https://localhost:8443/
+
+# Get JSON
+curl -k https://localhost:8443/api/json
+
+# Echo POST data
+curl -k -X POST -d "Hello World" https://localhost:8443/api/echo
+
+# View headers
+curl -k https://localhost:8443/api/headers
+        </pre>
+    </div>
+</body>
+</html>
