@@ -66,3 +66,13 @@ The NetCore demos live under `demos/` and are built as separate executables:
 - `hole_punch_demo` – UDP hole punching demonstration
 
 See `demos/README.md` for quick build/run examples.
+
+## Appendix: Errata
+
+### GCC 15.2
+
+In query_server_impl, the structured binding auto [resolve_ec, endpoints] = co_await resolver.async_resolve(...) creates a hidden tuple local in the coroutine frame (because its lifetime spans the subsequent co_await socket_.async_send_to(...)). GCC 15 has a regression where the destructor of such coroutine-frame-local structured binding variables is not called when the coroutine completes — so the basic_resolver_results<udp> (which holds the shared_ptr<vector<entry>>) is never freed. 3 objects = 3 STUN servers in the fixture.
+
+This causes ASAN builds with GCC 15.2 to correctly report the leaks.
+
+GCC 14 and Clang destroy them correctly.

@@ -1,18 +1,18 @@
 // Copyright (c) 2023- Charlie Vigue. All rights reserved.
 
-#pragma once
+#ifndef CLV_BASE_MICRO_TLS_CLIENT_H_
+#define CLV_BASE_MICRO_TLS_CLIENT_H_
 
-#include <algorithm>
-#include <atomic>
 #include <cstddef>
-#include <cstdint>
 #include <functional>
 #include <filesystem>
-#include <memory>
+#include <openssl/tls1.h>
 #include <optional>
 #include <stdexcept>
-#include <vector>
-#include <exception> // For std::exception_ptr
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <utility>
 
 #include <asio.hpp>
 #include <asio/ssl.hpp>
@@ -22,7 +22,6 @@
 #include <asio/experimental/awaitable_operators.hpp> // For operator&&
 
 #include "exception_help.h"
-#include "scope_guard.h"
 #include "array_deque.h"
 
 namespace clv {
@@ -132,7 +131,15 @@ auto MicroTlsClient<ProtoHandlerT>::CatchWrapper(asio::awaitable<void> (MicroTls
     try
     {
         // Explicitly call the member function pointer on the current object using the provided arguments
+#if defined(__GNUC__) && __GNUC__ == 15
+        // WORKAROUND: GCC 15 ICE in gimple_add_tmp_var (gimplify.cc:834) when co_return co_await is
+        // applied directly to a member-function-pointer call expression.  Materialising the awaitable
+        // in a named variable avoids the crash.  Remove once the upstream GCC bug is fixed.
+        auto awaitable = (this->*fn)(std::forward<ArgsT>(args)...);
+        co_return co_await std::move(awaitable);
+#else
         co_return co_await (this->*fn)(std::forward<ArgsT>(args)...);
+#endif
     }
     catch (const std::system_error &e)
     {
@@ -337,3 +344,5 @@ MicroTlsClient<ProtoHandlerT>::RecvCoroutine(data_size bytes_to_receive)
 }
 
 } // namespace clv
+
+#endif // CLV_BASE_MICRO_TLS_CLIENT_H_
