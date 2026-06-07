@@ -1,0 +1,76 @@
+<mxfile host="65bd71144e">
+    <diagram id="NqjJFQDuVbh4mbQ-EhV6" name="Page-1">
+        <mxGraphModel dx="924" dy="1910" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="2" value="HTTP Proto Handler&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#647687;strokeColor=#314354;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="40" width="280" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="3" value="&lt;font style=&quot;color: light-dark(rgb(0, 0, 0), rgb(0, 0, 0));&quot;&gt;MicroTlsClient&lt;/font&gt;&lt;div&gt;&lt;font style=&quot;color: light-dark(rgb(0, 0, 0), rgb(0, 0, 0));&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;color: light-dark(rgb(0, 0, 0), rgb(0, 0, 0));&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;fontColor=#ffffff;strokeColor=#006EAF;" parent="1" vertex="1">
+                    <mxGeometry x="90" y="440" width="180" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="4" value="&lt;br&gt;&lt;br&gt;&lt;br&gt;MicroTlsServer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;fontColor=#ffffff;strokeColor=#006EAF;" parent="1" vertex="1">
+                    <mxGeometry x="90" y="280" width="180" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="18" value="&lt;font style=&quot;color: light-dark(rgb(0, 0, 0), rgb(3, 3, 3));&quot;&gt;HTTP Client&lt;/font&gt;&lt;div&gt;&lt;font style=&quot;color: light-dark(rgb(0, 0, 0), rgb(3, 3, 3));&quot;&gt;Handler&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fontColor=#ffffff;fillColor=#6d8764;strokeColor=#3A5431;" parent="1" vertex="1">
+                    <mxGeometry x="120" y="480" width="120" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="20" value="" style="shape=flexArrow;endArrow=classic;startArrow=classic;html=1;strokeColor=light-dark(#36393D,#FF0000);fontColor=#000000;entryX=0.5;entryY=1;entryDx=0;entryDy=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;fillColor=light-dark(#FFFF88,#FF0000);" parent="1" source="3" target="4" edge="1">
+                    <mxGeometry width="100" height="100" relative="1" as="geometry">
+                        <mxPoint x="190" y="290" as="sourcePoint"/>
+                        <mxPoint x="190" y="210" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="21" value="HTTP parser" style="rounded=0;whiteSpace=wrap;html=1;fontColor=#ffffff;fillColor=#6d8764;strokeColor=#3A5431;" parent="1" vertex="1">
+                    <mxGeometry x="90" y="160" width="170" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="22" value="Request Router" style="rounded=0;whiteSpace=wrap;html=1;fontColor=#ffffff;fillColor=#6d8764;strokeColor=#3A5431;" parent="1" vertex="1">
+                    <mxGeometry x="90" y="120" width="170" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="23" value="Static Files" style="rounded=0;whiteSpace=wrap;html=1;fontColor=#ffffff;fillColor=#6d8764;strokeColor=#3A5431;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="80" width="60" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="24" value="Native Code" style="rounded=0;whiteSpace=wrap;html=1;fontColor=light-dark(#000000,#000000);fillColor=#fa6800;strokeColor=#C73500;" parent="1" vertex="1">
+                    <mxGeometry x="120" y="80" width="60" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="25" value="&lt;font style=&quot;color: light-dark(rgb(0, 0, 0), rgb(0, 0, 0));&quot;&gt;REST&lt;/font&gt;&lt;div&gt;&lt;font style=&quot;color: light-dark(rgb(0, 0, 0), rgb(0, 0, 0));&quot;&gt;API&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fontColor=light-dark(#000000,#000000);fillColor=#fa6800;strokeColor=#C73500;" parent="1" vertex="1">
+                    <mxGeometry x="240" y="80" width="60" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="26" value="Config" style="rounded=0;whiteSpace=wrap;html=1;fontColor=#ffffff;fillColor=#6d8764;strokeColor=#3A5431;" parent="1" vertex="1">
+                    <mxGeometry x="260" y="140" width="60" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="27" value="" style="shape=flexArrow;endArrow=classic;startArrow=classic;html=1;strokeColor=light-dark(#36393D,#FF0000);fontColor=#000000;entryX=1;entryY=0.5;entryDx=0;entryDy=0;fillColor=light-dark(#FFFF88,#FF0000);exitX=0;exitY=0.5;exitDx=0;exitDy=0;" parent="1" source="28" target="26" edge="1">
+                    <mxGeometry width="100" height="100" relative="1" as="geometry">
+                        <mxPoint x="410" y="160" as="sourcePoint"/>
+                        <mxPoint x="190" y="210" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="28" value="Config Sources&lt;br&gt;[Files, DB, cmd_opts, etc]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;fontColor=#ffffff;strokeColor=#006EAF;" parent="1" vertex="1">
+                    <mxGeometry x="410" y="120" width="180" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="30" value="Script Host" style="rounded=0;whiteSpace=wrap;html=1;fontColor=light-dark(#000000,#000000);fillColor=#fa6800;strokeColor=#C73500;" parent="1" vertex="1">
+                    <mxGeometry x="180" y="80" width="60" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="31" value="&lt;font style=&quot;color: light-dark(rgb(0, 0, 0), rgb(0, 0, 0));&quot;&gt;HTTP Server&lt;/font&gt;&lt;div&gt;&lt;font style=&quot;color: light-dark(rgb(0, 0, 0), rgb(0, 0, 0));&quot;&gt;Handler&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fontColor=#ffffff;fillColor=#6d8764;strokeColor=#3A5431;" parent="1" vertex="1">
+                    <mxGeometry x="120" y="280" width="120" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="32" value="Unimplemented" style="whiteSpace=wrap;html=1;fillColor=#fa6800;fontColor=light-dark(#000000,#000000);strokeColor=#C73500;" vertex="1" parent="1">
+                    <mxGeometry x="680" y="40" width="120" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="33" value="&lt;font style=&quot;color: light-dark(rgb(0, 0, 0), rgb(0, 0, 0));&quot;&gt;Implemented&lt;/font&gt;" style="whiteSpace=wrap;html=1;fillColor=#718769;strokeColor=light-dark(#82B366,#9DB395);gradientColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="680" y="90" width="120" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="34" value="External" style="whiteSpace=wrap;html=1;fillColor=#1ba1e2;strokeColor=#006EAF;fontColor=#ffffff;" vertex="1" parent="1">
+                    <mxGeometry x="680" y="140" width="120" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="35" value="" style="shape=flexArrow;endArrow=classic;startArrow=classic;html=1;strokeColor=light-dark(#36393D,#FF0000);fontColor=#000000;entryX=0.5;entryY=1;entryDx=0;entryDy=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;fillColor=light-dark(#FFFF88,#FF0000);" edge="1" parent="1">
+                    <mxGeometry width="100" height="100" relative="1" as="geometry">
+                        <mxPoint x="180" y="280" as="sourcePoint"/>
+                        <mxPoint x="180" y="200" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

@@ -1,0 +1,27 @@
+[submodule "extern/json"]
+	path = extern/json
+	url = https://github.com/nlohmann/json.git
+[submodule "extern/googletest"]
+	path = extern/googletest
+	url = https://github.com/google/googletest.git
+[submodule "extern/asio"]
+	path = extern/asio
+	url = https://github.com/chriskohlhoff/asio.git
+[submodule "extern/spdlog"]
+	path = extern/spdlog
+	url = https://github.com/gabime/spdlog.git
+[submodule "extern/cpptrace"]
+	path = extern/cpptrace
+	url = https://github.com/jeremy-rifkin/cpptrace.git
+[submodule "extern/libqsbr"]
+	path = extern/libqsbr
+	url = https://github.com/rmind/libqsbr.git
+[submodule "extern/nghttp3"]
+	path = extern/nghttp3
+	url = https://github.com/ngtcp2/nghttp3.git
+[submodule "extern/ngtcp2"]
+	path = extern/ngtcp2
+	url = https://github.com/ngtcp2/ngtcp2.git
+[submodule "extern/quictls"]
+	path = extern/quictls
+	url = https://github.com/quictls/openssl.git

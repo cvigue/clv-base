@@ -1,0 +1,141 @@
+// Copyright (c) 2023- Charlie Vigue. All rights reserved.
+
+
+#include "gtest/gtest.h"
+
+#include <string>
+#include <sstream>
+
+#include <HelpSslEvpPkey.h>
+
+using namespace clv;
+using namespace clv::OpenSSL;
+
+const std::string key_pem = R"(-----BEGIN PRIVATE KEY-----
+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
+ZPPItYqsLps55EAeKvTOwSuP4WUxRg==
+-----END PRIVATE KEY-----)";
+
+TEST(SslEvpPkey, from_nullptr)
+{
+    auto key = SslEvpKey(nullptr);
+    EXPECT_EQ(key.Get(), nullptr);
+}
+
+TEST(SslEvpPkey, fail_ptr)
+{
+    try
+    {
+        auto key = SslEvpKey((EVP_PKEY *)0);
+    }
+    catch (SslException &)
+    {
+        std::cout << "Fails as expected due to bad ptr\n";
+        return;
+    }
+    FAIL();
+}
+
+TEST(SslEvpPkey, from_pem_stream)
+{
+    std::istringstream s(key_pem);
+    auto key = SslEvpKey(s);
+    EXPECT_NE(key.Get(), nullptr);
+}
+
+TEST(SslEvpPkey, from_pem_empty)
+{
+    try
+    {
+        auto key = SslEvpKey("");
+    }
+    catch (SslException &)
+    {
+        std::cout << "Fails as expected due to bad PEM\n";
+        return;
+    }
+    FAIL();
+}
+
+TEST(SslEvpPkey, from_pem)
+{
+    auto key = SslEvpKey(key_pem);
+    EXPECT_NE(key.Get(), nullptr);
+}
+
+TEST(SslEvpPkey, random)
+{
+    auto key = SslEvpKey(2048);
+    EXPECT_NE(key.Get(), nullptr);
+}
+
+TEST(SslEvpPkey, assign)
+{
+    auto key = SslEvpKey(2048);
+    auto key2 = key;
+    EXPECT_NE(key.Get(), nullptr);
+    EXPECT_NE(key2.Get(), nullptr);
+    EXPECT_EQ(key.Get(), key2.Get());
+}
+
+TEST(SslEvpPkey, random_too_small)
+{
+    try
+    {
+        auto key = SslEvpKey(256);
+    }
+    catch (SslException &)
+    {
+        std::cout << "Fails as expected due to size too small\n";
+        return;
+    }
+    FAIL();
+}
