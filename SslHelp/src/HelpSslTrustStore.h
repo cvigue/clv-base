@@ -3,20 +3,15 @@
 #ifndef CLV_SSLHELP_SSLTRUSTSTORE_H
 #define CLV_SSLHELP_SSLTRUSTSTORE_H
 
-#include <cstdio>
 #include <filesystem>
-#include <memory>
 #include <set>
 #include <string>
 #include <utility>
 
-#include <openssl/pem.h>
 #include <openssl/types.h>
 #include <openssl/x509.h>
 #include <openssl/x509_vfy.h>
 
-#include "HelpSslException.h"
-#include "HelpSslFileUtils.h"
 #include "HelpSslX509.h"
 #include "HelpSslX509Crl.h"
 #include "HelpSslX509Store.h"
@@ -59,7 +54,17 @@ class SslTrustStore
     bool IsFingerprintTrusted(const std::string &fingerprint_hex) const;
     void ClearTrustedFingerprints();
 
-    // Get underlying X509_STORE for OpenSSL integration
+    /** @brief Owned X509_STORE wrapper (preferred SslHelp accessor) */
+    [[nodiscard]] SslX509Store &store() noexcept
+    {
+        return store_;
+    }
+    [[nodiscard]] const SslX509Store &store() const noexcept
+    {
+        return store_;
+    }
+
+    // Get underlying X509_STORE for OpenSSL / NetCore integration
     X509_STORE *GetStore()
     {
         return store_.Get();
@@ -110,24 +115,7 @@ inline void SslTrustStore::AddTrustedCA(const SslX509 &ca_cert)
 */
 inline void SslTrustStore::LoadCAFile(const std::filesystem::path &ca_file)
 {
-    if (!std::filesystem::exists(ca_file))
-        throw SslException("CA file not found: " + ca_file.string());
-
-    std::unique_ptr<FILE, decltype(&FileDeleter)> fp(fopen(ca_file.string().c_str(), "r"), &FileDeleter);
-    if (!fp)
-        throw SslException("Failed to open CA file: " + ca_file.string());
-
-    X509 *cert = nullptr;
-    int count = 0;
-    while ((cert = PEM_read_X509(fp.get(), nullptr, nullptr, nullptr)) != nullptr)
-    {
-        store_.AddCert(cert);
-        count++;
-        X509_free(cert);
-    }
-
-    if (count == 0)
-        throw SslException("No valid CA certificates found in file");
+    store_.LoadCertsFromFile(ca_file);
 }
 
 /**

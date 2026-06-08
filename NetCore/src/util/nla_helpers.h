@@ -1,7 +1,7 @@
 // Copyright (c) 2025- Charlie Vigue. All rights reserved.
 
-#ifndef CLV_VPN_NLA_HELPERS_H
-#define CLV_VPN_NLA_HELPERS_H
+#ifndef CLV_NETLINK_NLA_HELPERS_H
+#define CLV_NETLINK_NLA_HELPERS_H
 
 /**
  * @file nla_helpers.h
@@ -9,7 +9,7 @@
  *
  * Provides portable NLA_* macros (guarded with #ifndef for coexistence
  * with kernel headers) and inline NlaPut / NlaBeginNested helpers used
- * by both the VPN client and the DCO server data-channel.
+ * by netlink clients (nftables, DCO, route helpers).
  */
 
 #include <cstddef>
@@ -49,7 +49,7 @@
 
 // ===================== Inline helpers =====================
 
-namespace clv::vpn {
+namespace clv::netlink {
 
 /**
  * @brief Append a netlink attribute to a buffer with bounds checking.
@@ -127,6 +127,6 @@ inline bool NlaReadScalar(const struct nlattr *attr, T &out)
     return true;
 }
 
-} // namespace clv::vpn
+} // namespace clv::netlink
 
-#endif // CLV_VPN_NLA_HELPERS_H
+#endif // CLV_NETLINK_NLA_HELPERS_H

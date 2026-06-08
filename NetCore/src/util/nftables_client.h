@@ -100,7 +100,7 @@ class NfTablesClient
      */
     bool SendBatch(const std::vector<std::uint8_t> &batch);
 
-    NetlinkHelper nlh_; ///< Underlying netlink socket
+    clv::netlink::NetlinkHelper nlh_; ///< Underlying netlink socket
 };
 
 } // namespace clv::vpn

@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-namespace clv::vpn {
+namespace clv::netlink {
 
 NetlinkHelper::NetlinkHelper() = default;
 
@@ -371,4 +371,4 @@ void NetlinkHelper::ReceiveNetlinkAck(int sock, const char *operation)
     }
 }
 
-} // namespace clv::vpn
+} // namespace clv::netlink

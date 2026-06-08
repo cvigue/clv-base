@@ -1,79 +1,90 @@
 # SslHelp
 
-RAII C++ wrappers for OpenSSL types.
+RAII C++ wrappers for OpenSSL types. Header-only — include from `SslHelp/src/`.
 
 ## Overview
 
-SslHelp provides safe, modern C++ wrappers around OpenSSL's C API:
-- Automatic memory management (no leaks)
-- Reference counting where appropriate
-- Exception-based error handling
-- Move semantics support
+- Automatic memory management (RAII + refcount where OpenSSL refcountes)
+- Exception-based error handling (`SslException`)
+- Move semantics; explicit `nullptr` assignment where needed
+- Implicit `T*` conversion on refcounted wrappers for C API interop
 
 ## Documentation
 
-See [docs/README.md](docs/README.md) for API overview.
+| Doc | Contents |
+|-----|----------|
+| [docs/README.md](docs/README.md) | API map, quick examples |
+| [docs/CERTIFICATE_VALIDATION.md](docs/CERTIFICATE_VALIDATION.md) | Trust stores, tier-1 vs tier-2, NetCore integration |
 
-See [docs/CERTIFICATE_VALIDATION.md](docs/CERTIFICATE_VALIDATION.md) for certificate validation reference.
+## Key components
 
-## Key Components
+### Core wrappers
 
-### Core Wrappers
-
-| Header | OpenSSL Type | Description |
+| Header | OpenSSL type | Description |
 |--------|--------------|-------------|
-| `HelpSslContext.h` | `SSL_CTX` | TLS context |
+| `HelpSslContext.h` | `SSL_CTX` | TLS context, `UseCertStore`, `LoadVerifyPem` |
 | `HelpSslSsl.h` | `SSL` | TLS connection |
-| `HelpSslX509.h` | `X509` | Certificate |
+| `HelpSslX509.h` | `X509` | Certificate parse and inspect |
 | `HelpSslEvpPkey.h` | `EVP_PKEY` | Public/private key |
 | `HelpSslBio.h` | `BIO` | I/O abstraction |
 
-### RAII Templates
+### RAII templates
 
 | Header | Description |
 |--------|-------------|
-| `HelpSslNoRc.h` | Non-refcounted types (`std::unique_ptr` style) |
-| `HelpSslWithRc.h` | Refcounted types (handles `up_ref`/`free`) |
+| `HelpSslNoRc.h` | Single-owner types (`unique_ptr` style) |
+| `HelpSslWithRc.h` | Refcounted types (`up_ref` / `free`) |
 
-### Certificate Validation
-
-| Header | Description |
-|--------|-------------|
-| `HelpSslTrustStore.h` | CA store and CRL management |
-| `HelpSslCertValidator.h` | Chain validation with results |
-| `HelpSslVerifyHelper.h` | TLS handshake integration |
-
-### Utilities
+### Trust and validation
 
 | Header | Description |
 |--------|-------------|
-| `HelpSslHandshakeContext.h` | Memory BIO-based TLS handshake |
-| `HelpSslHmac.h` | HMAC operations |
-| `HelpSslCipher.h` | AEAD symmetric encryption (AES-GCM, ChaCha20-Poly1305) |
-| `HelpSslPkeyCrypto.h` | PKEY crypto: RSA-OAEP, EC ECDH/HKDF, digest sign/verify |
-| `HelpSslAsn1.h` | ASN.1 utilities |
-| `HelpSslBigNum.h` | Big number operations |
+| `HelpSslX509Store.h` | `X509_STORE` — PEM loaders, idempotent `AddCert` |
+| `HelpSslX509StoreCtx.h` | `X509_STORE_CTX` — chain verification |
+| `HelpSslTrustStore.h` | CA/CRL policy, fingerprint pinning |
+| `HelpSslCertValidator.h` | Chain validation with structured results |
+| `HelpSslVerifyHelper.h` | TLS handshake verify integration |
+
+### Crypto utilities
+
+| Header | Description |
+|--------|-------------|
+| `HelpSslHandshakeContext.h` | Memory BIO TLS handshake |
+| `HelpSslCipher.h` | AEAD (AES-GCM, ChaCha20-Poly1305) |
+| `HelpSslPkeyCrypto.h` | RSA-OAEP, EC ECDH/HKDF, PSS sign/verify |
+| `HelpSslHmac.h` | HMAC |
+| `HelpSslAsn1.h` | ASN.1 helpers |
+| `HelpSslBigNum.h` | BIGNUM operations |
 
 ## Usage
 
 ```cpp
-#include "SslHelp/src/HelpSslContext.h"
-#include "SslHelp/src/HelpSslX509.h"
+#include "HelpSslContext.h"
+#include "HelpSslX509.h"
+#include "HelpSslTrustStore.h"
 
-// Load certificate - automatic cleanup on scope exit
-SslX509 cert = SslX509::LoadFromFile("cert.pem");
+using namespace clv::OpenSSL;
+
+// Parse certificate — cleanup on scope exit
+SslX509 cert("-----BEGIN CERTIFICATE-----\n...");
 std::string cn = cert.GetCommonName();
 
-// Create TLS context
-SslContext ctx = SslContext::CreateServer();
-ctx.UseCertificate(cert);
+// Tier 1: load trust anchors into a context's built-in store
+SslContext ctx(TLS_client_method());
+ctx.LoadVerifyPem(ca_bundle_pem);
+ctx.SetVerifyMode(SSL_VERIFY_PEER);
+
+// Tier 2: share one canonical store across contexts
+SslTrustStore trust;
+trust.AddTrustedCA(ca_cert);
+ctx.UseCertStore(trust.store());
 ```
+
+Downstream projects (e.g. clv-meshcore) use `HelpSslPkeyCrypto.h` for envelope signing and E2E crypto.
 
 ## Tests
 
-250+ tests covering wrappers (including `HelpSslPkeyCrypto_tests`):
-
 ```bash
 cd build
-ctest -R SslHelp --output-on-failure
+ctest -R test_sslhelp --output-on-failure
 ```

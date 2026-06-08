@@ -2,11 +2,11 @@
 
 #include <gtest/gtest.h>
 
-#include <util/ipv6_utils.h>
+#include <net/ipv6_utils.h>
 
 #include <array>
 
-using namespace clv::vpn::ipv6;
+using namespace clv::net::ipv6;
 
 // ================================================================================================
 // ParseIpv6

@@ -7,6 +7,9 @@
 #include <sstream>
 
 #include <HelpSslEvpPkey.h>
+#include <HelpSslPkeyCrypto.h>
+
+#include <openssl/obj_mac.h>
 
 using namespace clv;
 using namespace clv::OpenSSL;
@@ -138,4 +141,19 @@ TEST(SslEvpPkey, random_too_small)
         return;
     }
     FAIL();
+}
+
+TEST(SslEvpPkey, bit_length_rsa_2048)
+{
+    auto key = SslEvpKey(2048);
+    EXPECT_EQ(EVP_PKEY_RSA, key.BaseId());
+    EXPECT_GE(key.BitLength(), 2048);
+}
+
+TEST(SslEvpPkey, ec_curve_nid_p256)
+{
+    auto key = GenerateEphemeralEcP256();
+    EXPECT_EQ(EVP_PKEY_EC, key.BaseId());
+    ASSERT_TRUE(key.EcCurveNid().has_value());
+    EXPECT_EQ(NID_X9_62_prime256v1, *key.EcCurveNid());
 }

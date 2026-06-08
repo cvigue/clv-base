@@ -1,5 +1,7 @@
 # Copyright (c) 2023- Charlie Vigue. All rights reserved.
 
+find_package(Threads REQUIRED)
+
 # Build libqsbr from the bundled C sources as a small static library.
 add_library(libqsbr STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../extern/libqsbr/src/qsbr.c
@@ -22,7 +24,7 @@ target_link_libraries(clv_core
     INTERFACE
         nlohmann_json::nlohmann_json
         libqsbr
-        pthread
+        Threads::Threads
 )
 
 # Add alias
@@ -42,7 +44,9 @@ if(BUILD_TESTING)
         tests/config_tests.cpp
         tests/config_json_parser_tests.cpp
         tests/event_tests.cpp
+        tests/hash_cache_tests.cpp
         tests/hash_util_tests.cpp
+        tests/lru_cache_tests.cpp
         tests/intrinsic_type_tests.cpp
         tests/is_callable_tests.cpp
         tests/make_pooled_st_tests.cpp
@@ -62,12 +66,15 @@ if(BUILD_TESTING)
         tests/job_runner_tests.cpp
         tests/log_utils_tests.cpp
         tests/rate_limiter_tests.cpp
+        tests/ipv6_utils_tests.cpp
         tests/AsanVerification_tests.cpp
     )
 
     target_include_directories(test_core PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../extern/asio/asio/include"
     )
+    target_compile_definitions(test_core PRIVATE ASIO_STANDALONE)
 
     target_link_libraries(test_core
         GTest::gtest_main

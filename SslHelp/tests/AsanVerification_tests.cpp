@@ -4,8 +4,12 @@
 #include <iostream>
 #endif
 
+#ifndef __has_feature
+#define __has_feature(x) 0
+#endif
+
 // Detect ASAN at compile time
-#if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
+#if defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
 #define CLV_ASAN_ENABLED 1
 #if defined(__has_include)
 #if __has_include(<sanitizer/asan_interface.h>)

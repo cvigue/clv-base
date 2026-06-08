@@ -1,26 +1,23 @@
 # HTTP/3 QUIC Server
 
-An experimental HTTP/3 server built on QUIC protocol with full TLS 1.3 support, API routing, and static file serving.
+An HTTP/3 server built on `clv::quic` (ngtcp2 + quictls) and nghttp3, used by test-infra interop adapters.
+
+> **Note:** Older revisions of this doc referenced a custom QUIC stack and BoringSSL. The current implementation uses **ngtcp2**, **quictls**, and **`clv::quic::TlsContext`**. See [../docs/QUIC_IMPLEMENTATION.md](../docs/QUIC_IMPLEMENTATION.md).
 
 ## Features
 
-- **HTTP/3 over QUIC**: Native QUIC transport with UDP
-- **TLS 1.3**: Secure connections using BoringSSL
-- **QPACK Compression**: Efficient header compression
-- **API Routing**: Built-in API endpoints with JSON responses
-- **Static File Serving**: Serve files from configured directory
-- **Config-Driven**: JSON configuration for all settings
-- **Multi-Threaded**: Thread pool for concurrent connections
+- **HTTP/3 over QUIC** — UDP transport via `clv::quic::Endpoint` / `Connection`
+- **TLS 1.3** — quictls via `TlsContext`
+- **QPACK** — nghttp3 header compression
+- **Static file serving** — configurable root directory
+- **Config-driven** — JSON configuration
 
 ## Architecture
 
-Based on the `simple_server` pattern but adapted for HTTP/3:
-- **ApiRouter**: Handles `/api/*` endpoints
-- **HttpStaticRouter**: Serves static files with MIME type detection
-- **QuicConnection**: Manages QUIC connection state
-- **QuicTls**: Handles TLS 1.3 handshake via BoringSSL
-- **HTTP/3 Frame Parsing**: HEADERS and DATA frames
-- **QPACK**: Header compression/decompression
+- `clv::quic::TlsContext` — shared server `SSL_CTX`
+- `clv::quic::Endpoint` — UDP socket + demux
+- `clv::quic::Connection` — per-client ngtcp2 state
+- nghttp3 — HTTP/3 framing and QPACK
 
 ## Configuration
 

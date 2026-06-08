@@ -1,106 +1,81 @@
-# QUIC Implementation
+# QUIC implementation (`clv::quic`)
 
 ## Status
 
-**Phase 3 Complete** (December 18, 2025)
+**Current stack:** ngtcp2 + quictls (`ngtcp2_crypto_quictls`), namespace `clv::quic`.
 
-- ✅ UDP transport layer (`MicroUdpServer`)
-- ✅ Connection multiplexing (`UdpConnectionMultiplexer`)
-- ✅ QUIC packet format and frame parsing
-- ✅ Reliability layer with ACK tracking
-- ✅ 61+ tests passing
-
-**Next:** Phase 4 (TLS integration for crypto/packet protection)
+The previous in-tree custom QUIC stack (`quic_legacy`, MicroUdpServer / frame parser) was removed after ngtcp2 interop validation. Some older docs and demos may still mention the legacy layout — this file describes the **current** code under `NetCore/src/quic/`.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────┐
-│      MicroUdpServer<MultiplexerT>       │  ← Generic UDP I/O layer
+│  Application (e.g. mesh transport)      │
 └─────────────────┬───────────────────────┘
                   │
                   ▼
 ┌─────────────────────────────────────────┐
-│  UdpConnectionMultiplexer               │  ← Stateful connection routing
+│  clv::quic::Endpoint                    │  UDP bind, recv loop, DCID demux
 └─────────────────┬───────────────────────┘
                   │
                   ▼
 ┌─────────────────────────────────────────┐
-│      SessionT (Protocol Logic)          │  ← QUIC/HTTP/3
+│  clv::quic::Connection                  │  ngtcp2_conn + per-conn SSL
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────┐
+│  clv::quic::TlsContext                  │  Shared SSL_CTX (server or client role)
 └─────────────────────────────────────────┘
 ```
 
-## Components
+One `TlsContext` is typically shared across all connections of the same role on an endpoint. Per-connection `SSL` objects are created inside `Connection`.
 
-### Core Headers
+## Components
 
 | File | Description |
 |------|-------------|
-| `quic/quic_varint.h` | Variable-length integer encoding (RFC 9000 §16) |
-| `quic/quic_packet.h` | Packet header parsing/serialization |
-| `quic/quic_frame.h` | Frame parsing for 10+ frame types |
-| `quic/quic_reliability.h` | ACK tracking, loss detection, congestion control |
+| `quic/tls_context.h` | `TlsContext` — cert/key PEM, ALPN, `SetTrustedCaPem`, `UseSharedCertStore` |
+| `quic/endpoint.h` | UDP I/O, packet handler callback |
+| `quic/connection.h` | Connection lifecycle, stream callbacks, handshake drive |
 
-### Variable-Length Integers
+Public headers avoid including `<openssl/ssl.h>` and `<ngtcp2/...>` where possible; implementation details live in `.cpp` translation units.
 
-QUIC uses compact variable-length encoding:
-- 1 byte: 0-63
-- 2 bytes: 0-16,383
-- 4 bytes: 0-1,073,741,823
-- 8 bytes: 0-2^62-1
+## TLS and trust
 
-### Packet Headers
+`TlsContext` factory methods:
 
-**Long Headers** (Initial, Handshake, 0-RTT, Retry):
-- Version, connection IDs, token, payload length
+- `MakeServer` / `MakeServerFromPem` — server cert chain + key + ALPN
+- `MakeClient` / `MakeClientFromPem` — client context; optional client cert for mTLS
 
-**Short Headers** (Application data, post-handshake):
-- Spin bit, key phase, connection ID, packet number
+Trust configuration:
 
-### Frame Types
+| Method | Tier | Description |
+|--------|------|-------------|
+| `SetTrustedCaPem` | 1 | Add CA(s) to context's internal store |
+| `SetTrustedCrlPem` | 1 | Add CRL(s), enable leaf CRL check |
+| `UseSharedCertStore` | 2 | `SSL_CTX_set1_cert_store` — share external store |
+| `SetVerifyPeer` | — | `SSL_VERIFY_PEER`; optional `FAIL_IF_NO_PEER_CERT` on server |
+| `SetVerifyPeerAcceptAny` | — | Require peer cert but skip chain validation (pin-by-identity mode) |
 
-| Frame | Purpose |
-|-------|---------|
-| PADDING, PING | Connection probing |
-| ACK | Acknowledge received packets |
-| CRYPTO | TLS handshake data |
-| STREAM | Application data with offset, length, FIN |
-| MAX_DATA, MAX_STREAM_DATA | Flow control |
-| RESET_STREAM | Abort stream |
-| CONNECTION_CLOSE | Terminate connection |
-| HANDSHAKE_DONE | Signal handshake completion |
+PEM parsing uses `clv::OpenSSL::SslX509Store` from SslHelp. See [../../SslHelp/docs/CERTIFICATE_VALIDATION.md](../../SslHelp/docs/CERTIFICATE_VALIDATION.md).
 
-### Reliability Layer
+## HTTP/3
 
-- **PacketTracker**: Tracks sent packets awaiting ACKs
-- **AckGenerator**: Tracks received packets, generates ACK frames
-- **CongestionController**: NewReno congestion control (RFC 9002 §7) in `quic_congestion.h`
-- Loss detection based on timeouts
-- Frame retransmission for CRYPTO, STREAM
-
-## Remaining Phases
-
-### Phase 4: TLS Integration
-- BoringSSL QUIC API integration
-- Initial packet protection
-- Handshake packet protection
-- Application data protection
-
-### Phase 5: HTTP/3
-- QPACK header compression
-- Request/response streams
-- Server push (optional)
+`demos/quic_simple_server.cpp` is an HTTP/3 server on top of `Endpoint` + `Connection` + nghttp3, used by interop test infrastructure. See [../demos/QUIC_SIMPLE_SERVER.md](../demos/QUIC_SIMPLE_SERVER.md).
 
 ## Testing
 
 ```bash
-# Run QUIC tests
 cd build
-ctest -R quic --output-on-failure
+ctest -R Quic2 --output-on-failure
 ```
+
+Covers `TlsContext` construction, TLS verify paths, connection scaffolding, endpoint smoke tests.
 
 ## References
 
-- [RFC 9000](https://www.rfc-editor.org/rfc/rfc9000.html) - QUIC Transport
-- [RFC 9001](https://www.rfc-editor.org/rfc/rfc9001.html) - QUIC TLS
-- [RFC 9114](https://www.rfc-editor.org/rfc/rfc9114.html) - HTTP/3
+- [RFC 9000](https://www.rfc-editor.org/rfc/rfc9000.html) — QUIC transport
+- [RFC 9001](https://www.rfc-editor.org/rfc/rfc9001.html) — QUIC-TLS
+- [RFC 9114](https://www.rfc-editor.org/rfc/rfc9114.html) — HTTP/3
+- [ngtcp2](https://github.com/ngtcp2/ngtcp2)

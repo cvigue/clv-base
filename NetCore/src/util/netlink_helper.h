@@ -1,7 +1,7 @@
 // Copyright (c) 2025- Charlie Vigue. All rights reserved.
 
-#ifndef CLV_VPN_NETLINK_HELPER_H
-#define CLV_VPN_NETLINK_HELPER_H
+#ifndef CLV_NETLINK_HELPER_H
+#define CLV_NETLINK_HELPER_H
 
 #include <cstddef>
 #include <linux/netlink.h>
@@ -11,13 +11,12 @@
 #include <string>
 #include <vector>
 
-namespace clv::vpn {
+namespace clv::netlink {
 
 /**
- * @brief Generic Netlink helper for ovpn-dco communication
+ * @brief Generic netlink socket helper (genl + rtnetlink).
  *
- * Provides low-level netlink socket operations for communicating
- * with the ovpn-dco-v2 kernel module.
+ * Used by nftables clients, DCO integration, and other kernel netlink consumers.
  */
 class NetlinkHelper
 {
@@ -158,6 +157,6 @@ class NetlinkHelper
     uint16_t family_id_ = 0; ///< ovpn-dco-v2 family ID
 };
 
-} // namespace clv::vpn
+} // namespace clv::netlink
 
-#endif // CLV_VPN_NETLINK_HELPER_H
+#endif // CLV_NETLINK_HELPER_H

@@ -5,9 +5,11 @@
 #define CLV_SSLHELP_SSL_ASN1_H
 
 #include <cstddef>
+#include <cstdint>
+#include <ctime>
+#include <optional>
 #include <openssl/types.h>
 #include <string>
-#include <cstdint>
 
 #include "HelpSslException.h"
 #include "HelpSslNoRc.h"
@@ -16,6 +18,7 @@
 #include <openssl/rand.h>
 #include <openssl/x509v3.h>
 #include <string_view>
+#include <time.h>
 
 namespace clv::OpenSSL {
 
@@ -252,6 +255,31 @@ struct SslAsn1BitString : SslNoRc<ASN1_BIT_STRING, &ASN1_BIT_STRING_new, &ASN1_B
 {
     using SslNoRc<ASN1_BIT_STRING, &ASN1_BIT_STRING_new, &ASN1_BIT_STRING_free>::SslNoRc;
 };
+
+/**
+    @brief Convert an OpenSSL ASN1_TIME to Unix epoch seconds (UTC).
+    @return Seconds since 1970-01-01 UTC, or @c std::nullopt on null/invalid input.
+*/
+[[nodiscard]] inline std::optional<std::int64_t> Asn1TimeToUnixSeconds(const ASN1_TIME *time) noexcept
+{
+    if (time == nullptr)
+        return std::nullopt;
+
+    std::tm tm{};
+    if (ASN1_TIME_to_tm(time, &tm) != 1)
+        return std::nullopt;
+
+    tm.tm_isdst = -1;
+#if defined(_WIN32)
+    const std::time_t unix_time = _mkgmtime(&tm);
+#else
+    const std::time_t unix_time = timegm(&tm);
+#endif
+    if (unix_time == static_cast<std::time_t>(-1))
+        return std::nullopt;
+
+    return static_cast<std::int64_t>(unix_time);
+}
 
 } // namespace clv::OpenSSL
 

@@ -79,3 +79,18 @@ TEST(HelpSslAsn1, negative_integers)
     auto asn1int = SslAsn1Integer(negative);
     EXPECT_EQ(negative, asn1int.AsInt());
 }
+
+TEST(HelpSslAsn1, asn1_time_to_unix_seconds)
+{
+    EXPECT_EQ(std::nullopt, Asn1TimeToUnixSeconds(nullptr));
+
+    ASN1_TIME *time = ASN1_TIME_new();
+    ASSERT_NE(time, nullptr);
+    ASSERT_EQ(1, ASN1_TIME_set_string(time, "20260415093835Z"));
+
+    const auto unix_ts = Asn1TimeToUnixSeconds(time);
+    ASSERT_TRUE(unix_ts.has_value());
+    EXPECT_EQ(1776245915, *unix_ts);
+
+    ASN1_TIME_free(time);
+}

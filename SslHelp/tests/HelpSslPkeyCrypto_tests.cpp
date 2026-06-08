@@ -1,6 +1,7 @@
 // Copyright (c) 2025- Charlie Vigue. All rights reserved.
 
 #include "HelpSslPkeyCrypto.h"
+#include "HelpSslX509.h"
 
 #include <openssl/evp.h>
 
@@ -26,6 +27,39 @@ TEST(SslPkeyCrypto, ExportImportPublicKeyDer)
     const auto der = ExportPublicKeyDer(key);
     const auto imported = ImportPublicKeyDer(der);
     EXPECT_EQ(EVP_PKEY_RSA, imported.BaseId());
+}
+
+TEST(SslPkeyCrypto, BorrowPublicKeyFromCertMatchesOwningExtract)
+{
+    auto chain = SslX509::LoadChainFromFile("cert.pem");
+    ASSERT_FALSE(chain.empty());
+    const SslX509 &cert = chain.front();
+    const auto borrowed_der = ExportPublicKeyDer(BorrowPublicKeyFromCert(cert));
+    const auto owning_der = ExportPublicKeyDer(PublicKeyFromCert(cert));
+    EXPECT_EQ(borrowed_der, owning_der);
+}
+
+TEST(SslPkeyCrypto, BorrowPublicKeyFromCertOutlivesCertificate)
+{
+    std::vector<std::uint8_t> borrowed_der;
+    {
+        auto chain = SslX509::LoadChainFromFile("cert.pem");
+        ASSERT_FALSE(chain.empty());
+        const auto borrowed = BorrowPublicKeyFromCert(chain.front());
+        borrowed_der = ExportPublicKeyDer(borrowed);
+    }
+    auto chain = SslX509::LoadChainFromFile("cert.pem");
+    ASSERT_FALSE(chain.empty());
+    EXPECT_EQ(borrowed_der, ExportPublicKeyDer(PublicKeyFromCert(chain.front())));
+}
+
+TEST(SslPkeyCrypto, BorrowPublicKeyFromCertSupportsKeyInspection)
+{
+    auto chain = SslX509::LoadChainFromFile("cert.pem");
+    ASSERT_FALSE(chain.empty());
+    const auto borrowed = BorrowPublicKeyFromCert(chain.front());
+    EXPECT_EQ(EVP_PKEY_RSA, borrowed.BaseId());
+    EXPECT_GE(borrowed.BitLength(), 2048);
 }
 
 TEST(SslPkeyCrypto, RsaOaepSha256Roundtrip)

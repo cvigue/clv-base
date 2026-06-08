@@ -209,6 +209,21 @@ parse_ipv4_address(const R &ip_str)
 [[nodiscard]] nat_type analyze_nat_type(const nat_test_result &test_results,
                                         const std::optional<asio::ip::address_v4> &local_address = std::nullopt);
 
+/**
+ * @brief Extract the 96-bit transaction ID from a STUN packet header (bytes 8–19).
+ * @return Empty when @p packet is shorter than @ref stun_constants::header_size.
+ */
+[[nodiscard]] std::optional<transaction_id> extract_transaction_id(std::span<const std::uint8_t> packet) noexcept;
+
+/**
+ * @brief Return @c true when @p packet is a valid STUN message with @p expected transaction ID.
+ *
+ * Used by shared-socket demuxers (e.g. @c meshcore::MeshStunDemux) to match
+ * binding responses to in-flight queries.
+ */
+[[nodiscard]] bool matches_transaction_id(std::span<const std::uint8_t> packet,
+                                          const transaction_id &expected) noexcept;
+
 } // namespace stun_utils
 
 // Implementation details - typically would be in a separate .cpp file
@@ -486,6 +501,26 @@ inline std::optional<message_type> stun_utils::get_message_type(std::span<const 
     default:
         return std::nullopt;
     }
+}
+
+inline std::optional<transaction_id> stun_utils::extract_transaction_id(std::span<const std::uint8_t> packet) noexcept
+{
+    if (packet.size() < stun_constants::header_size)
+        return std::nullopt;
+
+    transaction_id id{};
+    std::copy_n(packet.begin() + 8, stun_constants::transaction_id_size, id.begin());
+    return id;
+}
+
+inline bool stun_utils::matches_transaction_id(std::span<const std::uint8_t> packet,
+                                               const transaction_id &expected) noexcept
+{
+    if (!is_valid_stun_packet(packet))
+        return false;
+
+    const auto received = extract_transaction_id(packet);
+    return received.has_value() && *received == expected;
 }
 
 inline nat_type stun_utils::analyze_nat_type(const nat_test_result &test_results,

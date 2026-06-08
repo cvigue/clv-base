@@ -7,7 +7,7 @@
 #include <cstring>
 #include <linux/netlink.h>
 
-using namespace clv::vpn;
+using namespace clv::netlink;
 
 // ==================== NlaPut tests ====================
 

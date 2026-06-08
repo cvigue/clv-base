@@ -16,6 +16,7 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/rsa.h>
+#include <openssl/sha.h>
 
 #include <array>
 #include <cstddef>
@@ -50,7 +51,9 @@ template <std::size_t N>
 }
 
 /**
- * @brief Extract the certificate public key as an @c SslEvpKey.
+ * @brief Extract the certificate public key as an owning @c SslEvpKey.
+ * @details Uses @c X509_get_pubkey (allocates). Prefer @c BorrowPublicKeyFromCert when the
+ *          certificate outlives the key handle or only a short-lived @c SslEvpKey is needed.
  */
 inline SslEvpKey PublicKeyFromCert(const SslX509 &cert)
 {
@@ -58,6 +61,19 @@ inline SslEvpKey PublicKeyFromCert(const SslX509 &cert)
     if (!pkey)
         throw SslException("X509_get_pubkey failed");
     return SslEvpKey(pkey);
+}
+
+/**
+ * @brief Borrow the certificate embedded public key as an @c SslEvpKey.
+ * @details Uses @c X509_get0_pubkey plus @c EVP_PKEY_up_ref. The returned key remains valid
+ *          after @p cert is destroyed.
+ */
+inline SslEvpKey BorrowPublicKeyFromCert(const SslX509 &cert)
+{
+    EVP_PKEY *pkey = X509_get0_pubkey(const_cast<X509 *>(cert.Get()));
+    if (!pkey)
+        throw SslException("X509_get0_pubkey failed");
+    return SslEvpKey::Borrow(pkey);
 }
 
 /**
@@ -86,6 +102,16 @@ inline SslEvpKey ImportPublicKeyDer(std::span<const std::uint8_t> der)
     if (!pkey)
         throw SslException("d2i_PUBKEY failed");
     return SslEvpKey(pkey);
+}
+
+/**
+ * @brief One-shot SHA-256 digest of a byte span.
+ */
+[[nodiscard]] inline std::array<std::uint8_t, 32> Sha256(std::span<const std::uint8_t> data)
+{
+    std::array<std::uint8_t, 32> digest{};
+    SHA256(data.data(), data.size(), digest.data());
+    return digest;
 }
 
 inline void ConfigureRsaOaepSha256(EVP_PKEY_CTX *ctx)

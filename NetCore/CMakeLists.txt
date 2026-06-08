@@ -2,49 +2,100 @@
 
 find_package(OpenSSL REQUIRED)
 
-# NetCore library
-add_library(clv_netcore STATIC
-    src/util/netlink_helper.cpp
-    src/util/nftables_client.cpp
-    src/tun/tun_device.cpp
-)
+# =============================================================================
+# Slice 3: clv::nettransport — QUIC, STUN, HTTP (portable headers + QUIC .cpp)
+# =============================================================================
 
-target_include_directories(clv_netcore
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-        $<INSTALL_INTERFACE:include>
-    PRIVATE
-        ${ASIO_INCLUDE_DIR}
-)
-
-target_link_libraries(clv_netcore
-    PUBLIC
-        clv::sslhelp
-        clv::core
-        OpenSSL::SSL
-        OpenSSL::Crypto
-        spdlog::spdlog
-)
 if(USING_QUIC_TLS)
-    target_link_libraries(clv_netcore PRIVATE quictls_ssl quictls_crypto)
-
-    # clv::quic — ngtcp2-based transport (Phase 1 of QUIC migration).
-    # Compiled into clv_netcore so that consumers (meshcore) pick it up
-    # via the existing PUBLIC clv::netcore link.
-    target_sources(clv_netcore PRIVATE
+    add_library(clv_nettransport STATIC
         src/quic/endpoint.cpp
         src/quic/tls_context.cpp
         src/quic/connection.cpp
     )
-    target_include_directories(clv_netcore PRIVATE
+    target_include_directories(clv_nettransport
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+            $<INSTALL_INTERFACE:include>
+        PRIVATE
+            ${ASIO_INCLUDE_DIR}
+    )
+else()
+    add_library(clv_nettransport INTERFACE)
+    target_include_directories(clv_nettransport INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+        $<BUILD_INTERFACE:${ASIO_INCLUDE_DIR}>
+        $<INSTALL_INTERFACE:include>
+    )
+endif()
+
+target_link_libraries(clv_nettransport
+    PUBLIC
+        clv::sslhelp
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        spdlog::spdlog
+)
+
+if(USING_QUIC_TLS)
+    target_include_directories(clv_nettransport PRIVATE
         "${NGTCP2_INCLUDE_DIR}"
         "${QUICTLS_INCLUDE_DIR}"
     )
-    target_link_libraries(clv_netcore PRIVATE ngtcp2_crypto_quictls)
-    add_dependencies(clv_netcore ngtcp2_build)
+    target_link_libraries(clv_nettransport PRIVATE quictls_ssl quictls_crypto ngtcp2_crypto_quictls)
+    add_dependencies(clv_nettransport ngtcp2_build)
 endif()
 
-# Add alias
+add_library(clv::nettransport ALIAS clv_nettransport)
+
+# =============================================================================
+# Slice 4: clv::netlinux — generic netlink (Linux only)
+# =============================================================================
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_library(clv_netlinux STATIC
+        src/util/netlink_helper.cpp
+    )
+    target_include_directories(clv_netlinux
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+            $<INSTALL_INTERFACE:include>
+    )
+    target_link_libraries(clv_netlinux PUBLIC clv::core)
+    add_library(clv::netlinux ALIAS clv_netlinux)
+endif()
+
+# =============================================================================
+# Slice 5 (interim): clv::netvpn — TUN + nftables (Linux only; moves to VpnCore in 2a)
+# =============================================================================
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_library(clv_netvpn STATIC
+        src/util/nftables_client.cpp
+        src/tun/tun_device.cpp
+    )
+    target_include_directories(clv_netvpn
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+            $<INSTALL_INTERFACE:include>
+        PRIVATE
+            ${ASIO_INCLUDE_DIR}
+    )
+    target_link_libraries(clv_netvpn PUBLIC clv::netlinux)
+    add_library(clv::netvpn ALIAS clv_netvpn)
+endif()
+
+# =============================================================================
+# Backward compatibility: clv::netcore aggregates transport + Linux slices
+# =============================================================================
+
+add_library(clv_netcore INTERFACE)
+target_link_libraries(clv_netcore INTERFACE clv::nettransport)
+if(TARGET clv::netlinux)
+    target_link_libraries(clv_netcore INTERFACE clv::netlinux)
+endif()
+if(TARGET clv::netvpn)
+    target_link_libraries(clv_netcore INTERFACE clv::netvpn)
+endif()
 add_library(clv::netcore ALIAS clv_netcore)
 
 # QUIC HTTP/3 demo server target used by interop adapter images
@@ -97,9 +148,9 @@ if(BUILD_TESTING)
     # ============================================================================
     # test_netcore — OpenSSL-based tests (no QUIC crypto)
     # ============================================================================
-    add_executable(test_netcore)
-    target_sources(test_netcore PRIVATE
+    set(test_netcore_sources
         tests/stun_client_tests.cpp
+        tests/stun_discovery_tests.cpp
         tests/stun_utils_tests.cpp
         tests/HttpClientServer_tests.cpp
         tests/micro_tls_tests.cpp
@@ -109,11 +160,14 @@ if(BUILD_TESTING)
         tests/HttpResponse_tests.cpp
         tests/HttpProto_tests.cpp
         tests/HttpStaticRouter_tests.cpp
-        tests/nla_helpers_tests.cpp
-        tests/ipv6_utils_tests.cpp
         tests/static_file_resolver_tests.cpp
         tests/AsanVerification_tests.cpp
     )
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        list(APPEND test_netcore_sources tests/nla_helpers_tests.cpp)
+    endif()
+
+    add_executable(test_netcore ${test_netcore_sources})
     target_include_directories(test_netcore PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/"
         "${CMAKE_CURRENT_SOURCE_DIR}/../Core/src"
@@ -124,7 +178,7 @@ if(BUILD_TESTING)
         ASIO_STANDALONE
         ASIO_NO_DEPRECATED
     )
-    target_link_libraries(test_netcore
+    target_link_libraries(test_netcore PRIVATE
         GTest::gtest_main
         GTest::gmock
         OpenSSL::SSL
@@ -133,8 +187,11 @@ if(BUILD_TESTING)
         Threads::Threads
         spdlog::spdlog
     )
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_link_libraries(test_netcore PRIVATE clv::netlinux)
+    endif()
     if(UNIX)
-        target_link_libraries(test_netcore ${CMAKE_DL_LIBS})
+        target_link_libraries(test_netcore PRIVATE ${CMAKE_DL_LIBS})
     endif()
     apply_asan_flags(test_netcore)
 
@@ -169,7 +226,6 @@ if(BUILD_TESTING)
     if(USING_QUIC_TLS)
     add_executable(test_netcore_quic)
     target_sources(test_netcore_quic PRIVATE
-        # clv::quic (ngtcp2) tests.
         tests/quic_endpoint_smoke_tests.cpp
         tests/quic_tls_context_tests.cpp
         tests/quic_connection_tests.cpp
@@ -190,7 +246,7 @@ if(BUILD_TESTING)
         ASIO_NO_DEPRECATED
         CLV_HAS_QUIC_TLS=1
     )
-    target_link_libraries(test_netcore_quic
+    target_link_libraries(test_netcore_quic PRIVATE
         GTest::gtest_main
         GTest::gmock
         nlohmann_json::nlohmann_json
@@ -199,12 +255,11 @@ if(BUILD_TESTING)
         nghttp3_static
         Threads::Threads
         spdlog::spdlog
-        # quic2 (ngtcp2) Phase 1: pulls in clv::quic::Endpoint and ngtcp2.
-        clv_netcore
+        clv::nettransport
         ngtcp2_crypto_quictls
     )
     if(UNIX)
-        target_link_libraries(test_netcore_quic ${CMAKE_DL_LIBS})
+        target_link_libraries(test_netcore_quic PRIVATE ${CMAKE_DL_LIBS})
     endif()
     apply_asan_flags(test_netcore_quic)
 

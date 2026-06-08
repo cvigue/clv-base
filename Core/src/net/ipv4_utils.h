@@ -1,7 +1,7 @@
 // Copyright (c) 2026- Charlie Vigue. All rights reserved.
 
-#ifndef CLV_VPN_IPV4_UTILS_H
-#define CLV_VPN_IPV4_UTILS_H
+#ifndef CLV_NET_IPV4_UTILS_H
+#define CLV_NET_IPV4_UTILS_H
 
 #include <bit>
 #include <charconv>
@@ -14,7 +14,7 @@
 
 #include <asio/ip/address_v4.hpp>
 
-namespace clv::vpn::ipv4 {
+namespace clv::net::ipv4 {
 
 /**
  * @brief Parse a dotted-decimal IPv4 address string into a host-byte-order uint32.
@@ -139,6 +139,6 @@ inline std::uint32_t CalculateUsableHosts(std::uint8_t prefix_length)
     return (1u << host_bits) - 2; // Exclude network and broadcast
 }
 
-} // namespace clv::vpn::ipv4
+} // namespace clv::net::ipv4
 
-#endif // CLV_VPN_IPV4_UTILS_H
+#endif // CLV_NET_IPV4_UTILS_H

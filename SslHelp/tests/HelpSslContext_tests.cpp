@@ -6,12 +6,14 @@
 
 #include <algorithm>
 #include <cstring>
+#include <fstream>
 
 #include <array_deque.h>
 #include <event.h>
 #include <HelpSslCustomBio.h>
 #include <HelpSslContext.h>
 #include <HelpSslSsl.h>
+#include <HelpSslX509Store.h>
 
 #include "auto_thread.h"
 
@@ -341,4 +343,16 @@ TEST(SslContextTestSuite, SetVerifyModeNoThrow)
     SslContext ctx(TLS_server_method());
     EXPECT_NO_THROW(ctx.SetVerifyMode(SSL_VERIFY_PEER));
     EXPECT_NO_THROW(ctx.SetVerifyMode(SSL_VERIFY_NONE));
+}
+
+TEST(SslContextTestSuite, UseCertStoreAliasesSharedStore)
+{
+    SslX509Store trust_store;
+    std::ifstream file("cert.pem");
+    ASSERT_TRUE(file.good());
+    trust_store.AddCert(SslX509(std::move(file)));
+
+    SslContext ctx(TLS_server_method());
+    EXPECT_NO_THROW(ctx.UseCertStore(trust_store));
+    EXPECT_NO_THROW(ctx.UseCertStore(trust_store.Get()));
 }

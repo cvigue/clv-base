@@ -8,8 +8,10 @@
 #include "HelpSslException.h"
 #include "HelpSslWithRc.h"
 #include "HelpSslX509.h"
+#include "HelpSslX509Store.h"
 #include "HelpSslEvpPkey.h"
 
+#include <cstdint>
 #include <openssl/types.h>
 #include <openssl/ssl.h>
 #include <openssl/x509_vfy.h>
@@ -17,6 +19,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -117,15 +120,25 @@ struct SslContext : SslWithRc<SSL_CTX, SSL_CTX_new, SSL_CTX_free, SSL_CTX_up_ref
             throw SslException("SSL_CTX_load_verify_file failed");
     }
 
-    /** Load CA certificate from PEM string for verification */
+    /**
+        @brief Alias an existing X509_STORE into this context (SSL_CTX_set1_cert_store)
+        @param store Shared trust store; must outlive this SslContext
+        @note SslX509Store converts implicitly to X509_STORE* at call sites.
+    */
+    void UseCertStore(X509_STORE *store)
+    {
+        if (store == nullptr)
+            throw SslException("UseCertStore: store is null");
+        SSL_CTX_set1_cert_store(Get(), store);
+    }
+
+    /** Load one or more CA certificates from a PEM bundle into this context's store */
     void LoadVerifyPem(std::string_view pem)
     {
-        SslX509 ca_cert(pem);
         X509_STORE *store = SSL_CTX_get_cert_store(Get());
-        if (!store)
+        if (store == nullptr)
             throw SslException("SSL_CTX_get_cert_store returned null");
-        if (X509_STORE_add_cert(store, ca_cert.Get()) != 1)
-            throw SslException("X509_STORE_add_cert failed for CA PEM");
+        SslX509Store::Borrow(store).AddCertsFromPem(pem);
     }
     void SetMinProtoVersion(int version)
     {

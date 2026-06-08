@@ -144,6 +144,28 @@ TEST_F(StunUtilsTest, IsValidStunPacket)
     EXPECT_FALSE(stun_utils::is_valid_stun_packet(invalid_packet));
 }
 
+TEST_F(StunUtilsTest, ExtractTransactionId)
+{
+    const auto expected = stun_utils::generate_transaction_id();
+    const auto packet = stun_utils::create_binding_request(expected);
+
+    const auto extracted = stun_utils::extract_transaction_id(packet);
+    ASSERT_TRUE(extracted.has_value());
+    EXPECT_EQ(*extracted, expected);
+}
+
+TEST_F(StunUtilsTest, MatchesTransactionId)
+{
+    const auto expected = stun_utils::generate_transaction_id();
+    const auto packet = stun_utils::create_binding_request(expected);
+
+    EXPECT_TRUE(stun_utils::matches_transaction_id(packet, expected));
+
+    auto other = expected;
+    other[0] ^= 0xFF;
+    EXPECT_FALSE(stun_utils::matches_transaction_id(packet, other));
+}
+
 TEST_F(StunUtilsTest, GetMessageType)
 {
     std::array<std::uint8_t, 20> binding_request = {

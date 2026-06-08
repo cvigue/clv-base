@@ -98,6 +98,45 @@ TEST(SslX509StoreTest, SetFlagsDoesNotThrow)
     EXPECT_NO_THROW(store.SetFlags(X509_V_FLAG_X509_STRICT));
 }
 
+TEST(SslX509StoreTest, AddCertDuplicateIsIdempotent)
+{
+    std::ifstream file("cert.pem");
+    ASSERT_TRUE(file.good());
+    auto cert = SslX509(std::move(file));
+
+    SslX509Store store;
+    EXPECT_NO_THROW(store.AddCert(cert));
+    EXPECT_NO_THROW(store.AddCert(cert));
+}
+
+TEST(SslX509StoreTest, AddCertsFromPem)
+{
+    std::ifstream file("cert.pem");
+    ASSERT_TRUE(file.good());
+    const std::string pem((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+
+    SslX509Store store;
+    EXPECT_NO_THROW(store.AddCertsFromPem(pem));
+}
+
+TEST(SslX509StoreTest, AddCertsFromPemEmptyThrows)
+{
+    SslX509Store store;
+    EXPECT_THROW(store.AddCertsFromPem(""), SslException);
+}
+
+TEST(SslX509StoreTest, AddCrlsFromPem)
+{
+    SslX509Store store;
+    EXPECT_NO_THROW(store.AddCrlsFromPem(kCrlPem));
+}
+
+TEST(SslX509StoreTest, LoadCertsFromFile)
+{
+    SslX509Store store;
+    EXPECT_NO_THROW(store.LoadCertsFromFile("cert.pem"));
+}
+
 // ================================================================================================
 // Chain validation via X509_STORE (integration with SslX509StoreCtx)
 // ================================================================================================

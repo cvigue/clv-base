@@ -5,6 +5,7 @@
 #define CLV_SSLHELP_SSLX509_H
 
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <initializer_list>
 #include <istream>
@@ -24,6 +25,7 @@
 #include <optional>
 #include <chrono>
 #include <filesystem>
+#include <span>
 
 #include "HelpSslException.h"
 #include "HelpSslWithRc.h"
@@ -70,6 +72,9 @@ struct SslX509 : SslWithRc<X509, &X509_new, &X509_free, &X509_up_ref>
     std::string GetPEM();
     void PemRead(std::istream &&s);
 
+    /** @brief Encode this certificate as DER (mirrors @c GetPEM). */
+    [[nodiscard]] std::vector<std::uint8_t> GetDER() const;
+
     // Certificate validation methods
     bool IsValidAtTime(std::chrono::system_clock::time_point time = std::chrono::system_clock::now()) const;
     bool VerifySignature(const SslX509 &issuer_cert) const;
@@ -98,9 +103,41 @@ struct SslX509 : SslWithRc<X509, &X509_new, &X509_free, &X509_up_ref>
         return SslWithRc::BorrowRef<SslX509>(cert);
     }
 
+    /**
+        @brief Create an SslX509 by parsing a DER-encoded certificate
+        @param der DER bytes
+        @return SslX509 owning the freshly parsed certificate
+        @throws SslException if the DER cannot be parsed
+    */
+    static SslX509 FromDer(std::span<const std::uint8_t> der)
+    {
+        const std::uint8_t *p = der.data();
+        X509 *raw = d2i_X509(nullptr, &p, static_cast<long>(der.size()));
+        if (raw == nullptr)
+            throw SslException("d2i_X509 failed");
+        return SslX509(raw);
+    }
+
   private:
     void CopySelectedExtensions(SslX509 src, std::initializer_list<int> selected);
 };
+/**
+  @brief Encode this certificate as DER
+  @return DER bytes
+  @throws SslException if encoding fails
+*/
+inline std::vector<std::uint8_t> SslX509::GetDER() const
+{
+    X509 *cert = const_cast<X509 *>(Get());
+    const int len = i2d_X509(cert, nullptr);
+    if (len <= 0)
+        throw SslException("i2d_X509 failed");
+    std::vector<std::uint8_t> der(static_cast<std::size_t>(len));
+    std::uint8_t *p = der.data();
+    if (i2d_X509(cert, &p) <= 0)
+        throw SslException("i2d_X509 failed");
+    return der;
+}
 /**
   @brief Construct a new SslX509 object from a PEM string
   @param buffer PEM data

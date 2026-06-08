@@ -1,7 +1,7 @@
 // Copyright (c) 2026- Charlie Vigue. All rights reserved.
 
-#ifndef CLV_VPN_IPV6_UTILS_H
-#define CLV_VPN_IPV6_UTILS_H
+#ifndef CLV_NET_IPV6_UTILS_H
+#define CLV_NET_IPV6_UTILS_H
 
 #include <algorithm>
 #include <array>
@@ -16,7 +16,7 @@
 
 #include <asio/ip/address_v6.hpp>
 
-namespace clv::vpn::ipv6 {
+namespace clv::net::ipv6 {
 
 /** @brief Canonical 128-bit IPv6 address in network byte order. */
 using Ipv6Address = std::array<std::uint8_t, 16>;
@@ -144,6 +144,6 @@ inline std::string Ipv6ToString(const Ipv6Address &addr)
     return asio::ip::address_v6(addr).to_string();
 }
 
-} // namespace clv::vpn::ipv6
+} // namespace clv::net::ipv6
 
-#endif // CLV_VPN_IPV6_UTILS_H
+#endif // CLV_NET_IPV6_UTILS_H

@@ -69,8 +69,7 @@ inline SslVerifyHelper::SslVerifyHelper(SslContext &ctx, SslTrustStore &trust_st
     : sslCtx_(ctx), trustStore_(trust_store)
 {
     // Set up SSL_CTX to use our trust store
-    SSL_CTX_set_cert_store(ctx.Get(), trust_store.GetStore());
-    X509_STORE_up_ref(trust_store.GetStore()); // SSL_CTX takes ownership, add ref
+    sslCtx_.UseCertStore(trust_store.GetStore());
 
     // Set verify mode
     SSL_CTX_set_verify(ctx.Get(), SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, OpenSSLVerifyCallback);

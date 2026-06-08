@@ -3,10 +3,14 @@
 #include <gtest/gtest.h>
 
 #include "HelpSslException.h"
+#include "HelpSslX509.h"
 #include "HelpSslX509Crl.h"
 
+#include <openssl/x509.h>
 #include <sstream>
+#include <string>
 #include <string_view>
+#include <vector>
 
 using namespace clv::OpenSSL;
 
@@ -99,4 +103,47 @@ TEST(SslX509CrlTest, MoveTransfersOwnership)
     X509_CRL *raw = crl1.Get();
     SslX509Crl crl2(std::move(crl1));
     EXPECT_EQ(crl2.Get(), raw);
+}
+
+TEST(SslX509CrlTest, LastUpdateUnix)
+{
+    SslX509Crl crl{kCrlPem};
+    const auto ts = crl.LastUpdateUnix();
+    ASSERT_TRUE(ts.has_value());
+    EXPECT_EQ(1776245915, *ts);
+}
+
+TEST(SslX509CrlTest, VerifyIssuerWithCa)
+{
+    SslX509Crl crl{kCrlPem};
+    auto chain = SslX509::LoadChainFromFile("cert.pem");
+    ASSERT_FALSE(chain.empty());
+    EXPECT_TRUE(crl.VerifyIssuer(chain.front()));
+}
+
+TEST(SslX509CrlTest, TryFromBytesPemAndDer)
+{
+    const std::vector<std::uint8_t> pem_bytes(kCrlPem.begin(), kCrlPem.end());
+    const auto from_pem = SslX509Crl::TryFromBytes(pem_bytes);
+    ASSERT_TRUE(from_pem.has_value());
+
+    SslX509Crl crl{kCrlPem};
+    const int der_len = i2d_X509_CRL(crl.Get(), nullptr);
+    ASSERT_GT(der_len, 0);
+    std::vector<std::uint8_t> der(static_cast<std::size_t>(der_len));
+    std::uint8_t *p = der.data();
+    ASSERT_GT(i2d_X509_CRL(crl.Get(), &p), 0);
+
+    const auto from_der = SslX509Crl::TryFromBytes(der);
+    ASSERT_TRUE(from_der.has_value());
+    auto chain = SslX509::LoadChainFromFile("cert.pem");
+    ASSERT_FALSE(chain.empty());
+    EXPECT_TRUE(from_der->VerifyIssuer(chain.front()));
+}
+
+TEST(SslX509CrlTest, TryFromBytesRejectsGarbage)
+{
+    const std::vector<std::uint8_t> garbage{0x30, 0x03, 0x01, 0x02, 0x03};
+    EXPECT_FALSE(SslX509Crl::TryFromBytes(garbage).has_value());
+    EXPECT_FALSE(SslX509Crl::TryFromBytes(std::span<const std::uint8_t>{}).has_value());
 }

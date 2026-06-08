@@ -7,13 +7,14 @@ add_library(clv_sslhelp INTERFACE)
 target_include_directories(clv_sslhelp
     INTERFACE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+        # scope_guard.h (HelpSslVerifyHelper.h) — include-only, no libqsbr link
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../Core/src>
         $<INSTALL_INTERFACE:include>
 )
 target_link_libraries(clv_sslhelp
     INTERFACE
         OpenSSL::SSL
         OpenSSL::Crypto
-        clv::core
 )
 
 # Add alias

@@ -15,12 +15,13 @@
 #ifndef CLV_NETCORE_QUIC2_TLS_CONTEXT_H
 #define CLV_NETCORE_QUIC2_TLS_CONTEXT_H
 
-#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
+
+struct x509_store_st;
 
 namespace clv::quic {
 
@@ -101,6 +102,23 @@ class TlsContext
      * certificates were loaded.
      */
     void SetTrustedCaPem(std::string_view ca_pem);
+
+    /**
+     * Install one or more PEM-encoded CRLs into the context's X509_STORE and
+     * enable leaf CRL checking (@c X509_V_FLAG_CRL_CHECK). Call after
+     * @c SetTrustedCaPem so the store already contains the mesh CA.
+     */
+    void SetTrustedCrlPem(std::string_view crl_pem);
+
+    /**
+     * Alias an existing @c X509_STORE into this context (@c SSL_CTX_set1_cert_store).
+     * @c clv::OpenSSL::SslX509Store converts implicitly to @c X509_STORE* at call sites.
+     *
+     * Refcounting keeps the store alive for the context's lifetime; the mesh still
+     * declares @c MeshTrustAnchor before transport so CRL updates are visible to
+     * every aliased @c SSL_CTX without racing concurrent handshakes.
+     */
+    void UseSharedCertStore(x509_store_st *store);
 
     /**
      * Enable peer-certificate verification. On a client context this

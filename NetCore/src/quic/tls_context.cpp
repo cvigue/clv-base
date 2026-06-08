@@ -5,10 +5,14 @@
 
 #include "quic/tls_context.h"
 
+#include "HelpSslX509Store.h"
+
 #include <ngtcp2/ngtcp2_crypto_quictls.h>
 
 #include <openssl/err.h>
+#include <openssl/pem.h>
 #include <openssl/ssl.h>
+#include <openssl/x509.h>
 
 #include <cstring>
 #include <mutex>
@@ -344,55 +348,41 @@ TlsContext TlsContext::MakeClientFromPem(std::string_view cert_chain_pem,
 
 void TlsContext::SetTrustedCaPem(std::string_view ca_pem)
 {
-    if (ca_pem.empty())
-    {
-        throw std::runtime_error("TlsContext::SetTrustedCaPem: PEM is empty");
-    }
-    BIO *bio = BIO_new_mem_buf(ca_pem.data(), static_cast<int>(ca_pem.size()));
-    if (bio == nullptr)
-    {
-        throw std::runtime_error(DrainOpenSslError("BIO_new_mem_buf"));
-    }
-
     X509_STORE *store = SSL_CTX_get_cert_store(mImpl->mCtx);
     if (store == nullptr)
-    {
-        BIO_free(bio);
         throw std::runtime_error("TlsContext::SetTrustedCaPem: SSL_CTX has no cert store");
-    }
 
-    int loaded = 0;
-    while (true)
+    try
     {
-        X509 *cert = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr);
-        if (cert == nullptr)
-        {
-            // EOF is the normal terminator; clear OpenSSL's "no start
-            // line" error so it doesn't leak into the next call.
-            ERR_clear_error();
-            break;
-        }
-        const int rv = X509_STORE_add_cert(store, cert);
-        if (rv != 1)
-        {
-            const unsigned long err = ERR_peek_last_error();
-            if (ERR_GET_REASON(err) != X509_R_CERT_ALREADY_IN_HASH_TABLE)
-            {
-                X509_free(cert);
-                BIO_free(bio);
-                throw std::runtime_error(DrainOpenSslError("X509_STORE_add_cert"));
-            }
-            ERR_clear_error();
-        }
-        X509_free(cert);
-        ++loaded;
+        clv::OpenSSL::SslX509Store::Borrow(store).AddCertsFromPem(ca_pem);
     }
-    BIO_free(bio);
+    catch (const clv::OpenSSL::SslException &e)
+    {
+        throw std::runtime_error(std::string("TlsContext::SetTrustedCaPem: ") + e.what());
+    }
+}
 
-    if (loaded == 0)
+void TlsContext::SetTrustedCrlPem(std::string_view crl_pem)
+{
+    X509_STORE *store = SSL_CTX_get_cert_store(mImpl->mCtx);
+    if (store == nullptr)
+        throw std::runtime_error("TlsContext::SetTrustedCrlPem: SSL_CTX has no cert store");
+
+    try
     {
-        throw std::runtime_error("TlsContext::SetTrustedCaPem: no certificates parsed");
+        clv::OpenSSL::SslX509Store::Borrow(store).AddCrlsFromPem(crl_pem);
     }
+    catch (const clv::OpenSSL::SslException &e)
+    {
+        throw std::runtime_error(std::string("TlsContext::SetTrustedCrlPem: ") + e.what());
+    }
+}
+
+void TlsContext::UseSharedCertStore(x509_store_st *store)
+{
+    if (store == nullptr)
+        throw std::runtime_error("TlsContext::UseSharedCertStore: store is null");
+    SSL_CTX_set1_cert_store(mImpl->mCtx, store);
 }
 
 void TlsContext::SetVerifyPeer(bool require_peer_cert)

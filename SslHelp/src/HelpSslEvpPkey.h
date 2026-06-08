@@ -6,7 +6,10 @@
 
 #include <istream>
 #include <iterator>
+#include <optional>
 #include <openssl/bio.h>
+#include <openssl/obj_mac.h>
+#include <openssl/objects.h>
 #include <openssl/rsa.h>
 #include <openssl/types.h>
 #include <string>
@@ -16,7 +19,9 @@
 #include "HelpSslWithRc.h"
 #include "HelpSslBio.h"
 #include "HelpSslEvpPkeyCtx.h"
+#include "openssl/opensslv.h"
 
+#include <openssl/ec.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 
@@ -47,6 +52,61 @@ struct SslEvpKey : SslWithRc<EVP_PKEY, EVP_PKEY_new, EVP_PKEY_free, EVP_PKEY_up_
     [[nodiscard]] int BaseId() const noexcept
     {
         return EVP_PKEY_base_id(Get());
+    }
+
+    /** @brief Public-key strength in bits (RSA modulus or EC field size). */
+    [[nodiscard]] int BitLength() const
+    {
+        if (Get() == nullptr)
+            throw SslException("SslEvpKey: null key");
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+        return EVP_PKEY_get_bits(Get());
+#else
+        switch (EVP_PKEY_base_id(Get()))
+        {
+        case EVP_PKEY_RSA:
+            {
+                const RSA *rsa = EVP_PKEY_get0_RSA(Get());
+                if (rsa == nullptr)
+                    throw SslException("SslEvpKey: invalid RSA key");
+                return RSA_bits(rsa);
+            }
+        case EVP_PKEY_EC:
+            {
+                const EC_KEY *ec = EVP_PKEY_get0_EC_KEY(Get());
+                if (ec == nullptr)
+                    throw SslException("SslEvpKey: invalid EC key");
+                return EC_GROUP_get_degree(EC_KEY_get0_group(ec));
+            }
+        default:
+            throw SslException("SslEvpKey: BitLength unsupported for key type");
+        }
+#endif
+    }
+
+    /** @brief Share an external @c EVP_PKEY (increments refcount). */
+    static SslEvpKey Borrow(EVP_PKEY *pkey)
+    {
+        return SslWithRc::BorrowRef<SslEvpKey>(pkey);
+    }
+
+    /** @brief Elliptic-curve NID when this is an EC key; otherwise @c std::nullopt. */
+    [[nodiscard]] std::optional<int> EcCurveNid() const noexcept
+    {
+        if (Get() == nullptr || EVP_PKEY_base_id(Get()) != EVP_PKEY_EC)
+            return std::nullopt;
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+        char gname[80];
+        if (EVP_PKEY_get_group_name(Get(), gname, sizeof(gname), nullptr) <= 0)
+            return std::nullopt;
+        const int nid = OBJ_sn2nid(gname);
+        return nid == NID_undef ? OBJ_txt2nid(gname) : nid;
+#else
+        const EC_KEY *ec = EVP_PKEY_get0_EC_KEY(Get());
+        if (ec == nullptr)
+            return std::nullopt;
+        return EC_GROUP_get_curve_name(EC_KEY_get0_group(ec));
+#endif
     }
 
   private:

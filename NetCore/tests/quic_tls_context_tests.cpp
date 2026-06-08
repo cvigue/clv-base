@@ -56,4 +56,10 @@ TEST(Quic2TlsContext, OversizedAlpnThrows)
     EXPECT_THROW(clv::quic::TlsContext::MakeClient({huge}), std::runtime_error);
 }
 
+TEST(Quic2TlsContext, SetTrustedCrlPemRejectsEmpty)
+{
+    auto ctx = clv::quic::TlsContext::MakeClient({"clv-mesh/1"});
+    EXPECT_THROW(ctx.SetTrustedCrlPem(""), std::runtime_error);
+}
+
 } // namespace
