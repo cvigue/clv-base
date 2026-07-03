@@ -8,7 +8,6 @@ Foundation libraries for CLV projects: Core utilities, SSL helpers, and networki
 | **SslHelp** | `clv::sslhelp` | Header-only OpenSSL RAII wrappers ([docs](SslHelp/README.md)) |
 | **NetTransport** | `clv::nettransport` | QUIC, STUN, HTTP helpers (portable) |
 | **NetLinux** | `clv::netlinux` | Generic netlink helpers (Linux only) |
-| **NetVpn** | `clv::netvpn` | TUN + nftables (Linux only; interim — moves to VpnCore) |
 | **Compat** | `clv::netcore` | INTERFACE alias: transport + linux slices |
 
 Mesh consumers should link `clv::nettransport` only. VpnCore links `clv::netcore` (alias) or
@@ -32,7 +31,6 @@ Networking infrastructure (`clv::nettransport`):
 
 - **`clv::quic`** — ngtcp2-based QUIC transport (`Endpoint`, `Connection`, `TlsContext`)
 - STUN client for NAT traversal
-- TUN device abstraction
 - HTTP helpers and demos (including `quic_simple_server` HTTP/3 interop)
 
 ## Usage

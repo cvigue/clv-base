@@ -50,9 +50,8 @@ RFC 5389 STUN client on standalone Asio + C++20 coroutines: public address disco
 
 Packet build/parse helpers, typed enums for message and NAT types.
 
-### TUN / utilities
+### Linux utilities
 
-- `tun/tun_device.h` — TUN device abstraction (`clv::vpn::tun`)
 - `util/netlink_helper.h`, `util/nla_helpers.h` — generic netlink (`clv::netlink`)
 - IP helpers live in Core: `Core/src/net/ipv4_utils.h`, `ipv6_utils.h` (`clv::net::ipv4/ipv6`)
 

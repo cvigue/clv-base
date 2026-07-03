@@ -65,26 +65,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 # =============================================================================
-# Slice 5 (interim): clv::netvpn — TUN + nftables (Linux only; moves to VpnCore in 2a)
-# =============================================================================
-
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    add_library(clv_netvpn STATIC
-        src/util/nftables_client.cpp
-        src/tun/tun_device.cpp
-    )
-    target_include_directories(clv_netvpn
-        PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-            $<INSTALL_INTERFACE:include>
-        PRIVATE
-            ${ASIO_INCLUDE_DIR}
-    )
-    target_link_libraries(clv_netvpn PUBLIC clv::netlinux)
-    add_library(clv::netvpn ALIAS clv_netvpn)
-endif()
-
-# =============================================================================
 # Backward compatibility: clv::netcore aggregates transport + Linux slices
 # =============================================================================
 
@@ -92,9 +72,6 @@ add_library(clv_netcore INTERFACE)
 target_link_libraries(clv_netcore INTERFACE clv::nettransport)
 if(TARGET clv::netlinux)
     target_link_libraries(clv_netcore INTERFACE clv::netlinux)
-endif()
-if(TARGET clv::netvpn)
-    target_link_libraries(clv_netcore INTERFACE clv::netvpn)
 endif()
 add_library(clv::netcore ALIAS clv_netcore)
 
