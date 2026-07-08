@@ -4,6 +4,7 @@
 #define CLV_ConfigJsonParser_H
 
 #include "config.h"
+#include "config_io.h"
 #include <fstream>
 #include <filesystem>
 #include <stdexcept>
@@ -74,26 +75,7 @@ class ConfigJsonParser
 template <typename... Ts>
 Config<Ts...> ConfigJsonParser<Ts...>::ParseFile(const std::filesystem::path &filepath)
 {
-    if (!std::filesystem::exists(filepath))
-        throw std::runtime_error("ConfigJsonParser::ParseFile: File not found: " + filepath.string());
-
-    std::ifstream file(filepath);
-    if (!file.is_open())
-        throw std::runtime_error("ConfigJsonParser::ParseFile: Cannot open file: " + filepath.string());
-
-    nlohmann::json json;
-    try
-    {
-        file >> json;
-    }
-    catch (const nlohmann::json::parse_error &e)
-    {
-        throw std::runtime_error("ConfigJsonParser::ParseFile: JSON parse error: " + std::string(e.what()));
-    }
-
-    if (!json.is_object())
-        throw std::runtime_error("ConfigJsonParser::ParseFile: Root JSON must be an object");
-
+    auto json = config::ParseJsonObjectFile(filepath, "ConfigJsonParser");
     Config<Ts...> config;
     for (auto it = json.begin(); it != json.end(); ++it)
     {
@@ -106,16 +88,7 @@ Config<Ts...> ConfigJsonParser<Ts...>::ParseFile(const std::filesystem::path &fi
 template <typename... Ts>
 Config<Ts...> ConfigJsonParser<Ts...>::ParseString(std::string_view jsonString)
 {
-    nlohmann::json json;
-    try
-    {
-        json = nlohmann::json::parse(jsonString);
-    }
-    catch (const nlohmann::json::parse_error &e)
-    {
-        throw std::runtime_error("ConfigJsonParser::ParseString: JSON parse error: " + std::string(e.what()));
-    }
-
+    auto json = config::ParseJsonString(jsonString, "ConfigJsonParser");
     if (!json.is_object())
         throw std::runtime_error("ConfigJsonParser::ParseString: Root JSON must be an object");
 

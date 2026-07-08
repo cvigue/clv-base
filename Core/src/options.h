@@ -4,15 +4,21 @@
 #ifndef CLV_CORE_OPTIONS_H
 #define CLV_CORE_OPTIONS_H
 
+#include <algorithm>
+#include <cstddef>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <optional>
 #include <functional>
 #include <stdexcept>
+#include <variant>
 #include <vector>
+#include <limits>
 
 #include "intrinsic_type.h"
+#include "parse_intake.h"
 
 namespace clv {
 
@@ -200,6 +206,8 @@ struct Options::Item
     bool HasValue() const noexcept;
     template <typename TypeT>
     auto get() const;
+    template <typename TypeT>
+    auto get_bounded(TypeT min_value, TypeT max_value) const;
     template <typename TypeT>
     const auto &get(const TypeT &) const noexcept;
     template <typename TypeT>
@@ -496,10 +504,16 @@ auto Options::Item::get() const
     {
         if constexpr (std::is_same_v<bool, TypeT>)
             return *mValue == "1" || *mValue == "true";
-        else if constexpr (std::is_same_v<int, TypeT>)
-            return std::stoi(*mValue);
-        else if constexpr (std::is_same_v<long, TypeT>)
-            return std::stol(*mValue);
+        else if constexpr (std::is_integral_v<TypeT> && !std::is_same_v<bool, TypeT>)
+        {
+            return ParseBoundedOrThrow<TypeT>(
+                *mValue,
+                std::numeric_limits<TypeT>::min(),
+                std::numeric_limits<TypeT>::max(),
+                {.source = "Options", .field = "value"},
+                [](const std::string &msg)
+                { return std::runtime_error(msg); });
+        }
         else if constexpr (std::is_same_v<float, TypeT>)
             return std::stof(*mValue);
         else if constexpr (std::is_same_v<double, TypeT>)
@@ -508,6 +522,25 @@ auto Options::Item::get() const
             return *mValue;
     }
     throw std::runtime_error("Item::get<>() called with empty value");
+}
+
+template <typename TypeT>
+auto Options::Item::get_bounded(TypeT min_value, TypeT max_value) const
+{
+    if (!HasValue())
+        throw std::runtime_error("Item::get_bounded<>() called with empty value");
+    if constexpr (std::is_integral_v<TypeT>)
+    {
+        return ParseBoundedOrThrow<TypeT>(
+            *mValue,
+            min_value,
+            max_value,
+            {.source = "Options", .field = "value"},
+            [](const std::string &msg)
+            { return std::runtime_error(msg); });
+    }
+    else
+        return get<TypeT>();
 }
 /**
     @brief Get the value associated with this item

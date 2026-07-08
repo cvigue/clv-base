@@ -30,6 +30,7 @@ endif()
 
 target_link_libraries(clv_nettransport
     PUBLIC
+        clv::core
         clv::sslhelp
         OpenSSL::SSL
         OpenSSL::Crypto
@@ -158,9 +159,9 @@ if(BUILD_TESTING)
     target_link_libraries(test_netcore PRIVATE
         GTest::gtest_main
         GTest::gmock
+        clv::core
         OpenSSL::SSL
         OpenSSL::Crypto
-        nlohmann_json::nlohmann_json
         Threads::Threads
         spdlog::spdlog
     )

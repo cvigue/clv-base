@@ -7,12 +7,15 @@
 #include <cstddef>
 #include <chrono>
 #include <format>
+#include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
-#include <optional>
+#include <type_traits>
 
 #include "HttpDefs.h"
 #include "buffer_util.h"
+#include <parse_intake.h>
 
 namespace clv::http {
 
@@ -196,14 +199,14 @@ HttpResponse::GetHeaderValueImpl(ci_string key) const noexcept
 
         if constexpr (std::is_same_v<bool, TypeT>)
             return value == "1" || value == "true";
-        else if constexpr (std::is_same_v<int, TypeT>)
-            return std::stoi(value);
-        else if constexpr (std::is_same_v<unsigned long, TypeT>)
-            return std::stoul(value);
-        else if constexpr (std::is_same_v<std::size_t, TypeT>)
-            return std::stoull(value);
-        else if constexpr (std::is_same_v<long, TypeT>)
-            return std::stol(value);
+        else if constexpr (std::is_integral_v<TypeT> && !std::is_same_v<bool, TypeT>)
+        {
+            if (auto parsed = clv::ParseBounded<TypeT>(value,
+                                                       std::numeric_limits<TypeT>::min(),
+                                                       std::numeric_limits<TypeT>::max()))
+                return *parsed;
+            return std::nullopt;
+        }
         else if constexpr (std::is_same_v<float, TypeT>)
             return std::stof(value);
         else if constexpr (std::is_same_v<double, TypeT>)
@@ -302,7 +305,15 @@ inline bool HttpResponseParser::Parse(buffer_type httpData)
     auto space = statusLine.find(' ');
     if (space == std::string_view::npos)
         return false;
-    mResponse.SetStatusCode(std::stoi(std::string(statusLine.substr(space + 1))));
+    auto code_view = statusLine.substr(space + 1);
+    while (!code_view.empty() && (code_view.front() == ' ' || code_view.front() == '\t'))
+        code_view.remove_prefix(1);
+    if (const auto code_end = code_view.find_first_of(" \t\r\n"); code_end != std::string_view::npos)
+        code_view = code_view.substr(0, code_end);
+    if (auto status = clv::ParseBounded<int>(code_view, 100, 599))
+        mResponse.SetStatusCode(*status);
+    else
+        return false;
 
     // Get the headers
     while (!httpData.empty())

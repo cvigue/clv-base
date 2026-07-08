@@ -54,6 +54,7 @@ if(BUILD_TESTING)
         tests/mutex_type_tests.cpp
         tests/not_null_tests.cpp
         tests/numeric_util_tests.cpp
+        tests/parse_intake_tests.cpp
         tests/optional_ref_tests.cpp
         tests/options_tests.cpp
         tests/pid_controller_tests.cpp

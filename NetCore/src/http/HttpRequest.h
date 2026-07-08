@@ -4,14 +4,20 @@
 #ifndef CLV_HTTPCORE_HTTPREQUEST_H
 #define CLV_HTTPCORE_HTTPREQUEST_H
 
+#include <algorithm>
+#include <cctype>
 #include <cstddef>
-#include <unordered_map>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
+#include <unordered_map>
 
 #include <array_deque.h>
 #include <ci_string.h>
 #include <buffer_util.h>
+#include <parse_intake.h>
 
 #include "HttpDefs.h"
 
@@ -239,14 +245,16 @@ inline auto HttpRequestParser::GetHeaderValue(ci_string key, TypeT defValue)
 
         if constexpr (std::is_same_v<bool, TypeT>)
             return value == "1" || value == "true";
-        else if constexpr (std::is_same_v<int, TypeT>)
-            return std::stoi(value);
-        else if constexpr (std::is_same_v<unsigned long, TypeT>)
-            return std::stoul(value);
-        else if constexpr (std::is_same_v<std::size_t, TypeT>)
-            return std::stoull(value);
-        else if constexpr (std::is_same_v<long, TypeT>)
-            return std::stol(value);
+        else if constexpr (std::is_integral_v<TypeT> && !std::is_same_v<bool, TypeT>)
+        {
+            return clv::ParseBoundedOrThrow<TypeT>(
+                value,
+                std::numeric_limits<TypeT>::min(),
+                std::numeric_limits<TypeT>::max(),
+                {.source = "HttpRequest", .field = std::string_view{key}},
+                [](const std::string &msg)
+                { return std::runtime_error(msg); });
+        }
         else if constexpr (std::is_same_v<float, TypeT>)
             return std::stof(value);
         else if constexpr (std::is_same_v<double, TypeT>)
