@@ -134,6 +134,7 @@ if(BUILD_TESTING)
         tests/micro_tls_tests.cpp
         tests/micro_udp_server_tests.cpp
         tests/byte_packer_tests.cpp
+        tests/reactor_timer_tests.cpp
         tests/HttpRequest_tests.cpp
         tests/HttpResponse_tests.cpp
         tests/HttpProto_tests.cpp
