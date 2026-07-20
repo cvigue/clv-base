@@ -1,13 +1,18 @@
 // Copyright (c) 2023- Charlie Vigue. All rights reserved.
 
+#include <bits/basic_string.h>
 #include <gtest/gtest.h>
 
 #include <array>
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
+#include <vector>
 
 #include "lru_cache.h"
+#include "optional_ref.h"
 
 using namespace clv;
 using namespace std::literals;
@@ -501,4 +506,134 @@ TEST(LruCacheHashTest, CustomHasherWorks)
     EXPECT_FALSE(cache.put(k2, 20));
     EXPECT_EQ(cache.get(k1).value(), 10);
     EXPECT_EQ(cache.get(k2).value(), 20);
+}
+
+TEST(LruCacheEvictionReportTest, NovelInsertReportsLruVictim)
+{
+    LruCache<int, int> cache(2);
+    cache.put(1, 100);
+    cache.put(2, 200);
+
+    auto evicted = cache.put_reporting_eviction(3, 300);
+    ASSERT_TRUE(evicted.has_value());
+    EXPECT_EQ(evicted->first, 1);
+    EXPECT_EQ(evicted->second, 100);
+    EXPECT_FALSE(cache.peek(1).has_value());
+    EXPECT_TRUE(cache.peek(2).has_value());
+    EXPECT_TRUE(cache.peek(3).has_value());
+}
+
+TEST(LruCacheEvictionReportTest, UpdateExistingReportsNothing)
+{
+    LruCache<int, int> cache(2);
+    cache.put(1, 100);
+    cache.put(2, 200);
+
+    auto evicted = cache.put_reporting_eviction(1, 111);
+    EXPECT_FALSE(evicted.has_value());
+    EXPECT_EQ(cache.peek(1).value(), 111);
+    EXPECT_EQ(cache.size(), 2u);
+}
+
+TEST(LruCacheEvictionReportTest, InsertBelowCapacityReportsNothing)
+{
+    LruCache<int, int> cache(3);
+    EXPECT_FALSE(cache.put_reporting_eviction(1, 100).has_value());
+    EXPECT_FALSE(cache.put_reporting_eviction(2, 200).has_value());
+}
+
+TEST(LruCacheEvictionReportTest, PinnedKeySkippedWhenReporting)
+{
+    LruCache<int, int> cache(2);
+    cache.set_pinned_key(1);
+    cache.put(1, 100);
+    cache.put(2, 200);
+
+    auto evicted = cache.put_reporting_eviction(3, 300);
+    ASSERT_TRUE(evicted.has_value());
+    EXPECT_EQ(evicted->first, 2);
+    EXPECT_EQ(evicted->second, 200);
+    EXPECT_TRUE(cache.peek(1).has_value());
+    EXPECT_FALSE(cache.peek(2).has_value());
+}
+
+TEST(LruCacheTouchUpdateTest, TouchPromotesWithoutChangingValue)
+{
+    LruCache<int, int> cache(2);
+    cache.put(1, 100);
+    cache.put(2, 200);
+    ASSERT_TRUE(cache.touch(1));
+    cache.put(3, 300);
+    EXPECT_TRUE(cache.peek(1).has_value()) << "touch must refresh LRU order";
+    EXPECT_EQ(cache.peek(1).value(), 100);
+    EXPECT_FALSE(cache.peek(2).has_value());
+    EXPECT_TRUE(cache.peek(3).has_value());
+}
+
+TEST(LruCacheTouchUpdateTest, TouchMissingReturnsFalse)
+{
+    LruCache<int, int> cache(2);
+    EXPECT_FALSE(cache.touch(42));
+}
+
+TEST(LruCacheTouchUpdateTest, UpdateDoesNotPromote)
+{
+    LruCache<int, int> cache(2);
+    cache.put(1, 100);
+    cache.put(2, 200);
+    ASSERT_TRUE(cache.update(1, 111));
+    EXPECT_EQ(cache.peek(1).value(), 111);
+    cache.put(3, 300);
+    EXPECT_FALSE(cache.peek(1).has_value()) << "update must not refresh LRU order";
+    EXPECT_TRUE(cache.peek(2).has_value());
+    EXPECT_TRUE(cache.peek(3).has_value());
+}
+
+TEST(LruCacheTouchUpdateTest, UpdateMissingReturnsFalse)
+{
+    LruCache<int, int> cache(2);
+    EXPECT_FALSE(cache.update(42, 7));
+}
+
+TEST(LruCacheIterationTest, ForEachIsMruToLru)
+{
+    LruCache<int, int> cache(3);
+    cache.put(1, 100);
+    cache.put(2, 200);
+    cache.put(3, 300);
+
+    std::vector<int> keys;
+    cache.for_each([&](const int &key, const int &)
+    { keys.push_back(key); });
+    ASSERT_EQ(keys.size(), 3u);
+    EXPECT_EQ(keys[0], 3);
+    EXPECT_EQ(keys[1], 2);
+    EXPECT_EQ(keys[2], 1);
+}
+
+TEST(LruCacheIterationTest, ForEachLruFirstIsLruToMru)
+{
+    LruCache<int, int> cache(3);
+    cache.put(1, 100);
+    cache.put(2, 200);
+    cache.put(3, 300);
+
+    std::vector<int> keys;
+    cache.for_each_lru_first([&](const int &key, const int &)
+    { keys.push_back(key); });
+    ASSERT_EQ(keys.size(), 3u);
+    EXPECT_EQ(keys[0], 1);
+    EXPECT_EQ(keys[1], 2);
+    EXPECT_EQ(keys[2], 3);
+}
+
+TEST(LruCacheIterationTest, ForEachEmptyIsNoOp)
+{
+    LruCache<int, int> cache(2);
+    int calls = 0;
+    cache.for_each([&](const int &, const int &)
+    { ++calls; });
+    cache.for_each_lru_first([&](const int &, const int &)
+    { ++calls; });
+    EXPECT_EQ(calls, 0);
 }

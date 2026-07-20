@@ -4,7 +4,6 @@
 #define CLV_CORE_LRU_CACHE_H
 
 #include <cstddef>
-#include <functional>
 #include <list>
 #include <optional>
 #include <unordered_map>
@@ -19,6 +18,9 @@ namespace clv {
     @tparam KeyT The key type, must have well defined equality semantics and be hashable
     @tparam ValueT The value type, must be copyable or movable
     @tparam HashT Hash functor for @c KeyT (defaults to @c std::hash)
+
+    Recency order is MRU at the front of the internal list and LRU at the back.
+    @c get / @c put / @c touch promote to MRU; @c peek / @c update do not.
 */
 template <typename KeyT, typename ValueT, typename HashT = std::hash<KeyT>>
 class LruCache
@@ -30,6 +32,7 @@ class LruCache
     std::optional<KeyT> mPinnedKey;
 
     void trim_one() noexcept;
+    [[nodiscard]] std::optional<Node> extract_lru_victim() noexcept;
 
   public:
     /**
@@ -66,10 +69,33 @@ class LruCache
     [[nodiscard]] optional_ref<const ValueT &> peek(const KeyT &key) const noexcept;
 
     /**
+        @brief Promote @p key to MRU without changing its value.
+        @return false if @p key is not present.
+    */
+    bool touch(const KeyT &key) noexcept;
+
+    /**
+        @brief Replace the value for @p key without changing LRU order.
+        @return false if @p key is not present.
+    */
+    bool update(const KeyT &key, ValueT &&value) noexcept;
+
+    /**
+        @brief Replace the value for @p key without changing LRU order.
+        @return false if @p key is not present.
+    */
+    bool update(const KeyT &key, const ValueT &value) noexcept;
+
+    /**
         @brief Remove @p key if present.
         @return true when an entry was removed.
     */
     bool erase(const KeyT &key) noexcept;
+
+    /**
+        @brief Remove all entries. Capacity and pinned key are unchanged.
+    */
+    void clear() noexcept;
 
     /**
         @brief Put a key-value pair into the cache
@@ -86,6 +112,50 @@ class LruCache
     bool put(KeyT &&key, ValueT &&value) noexcept;
 
     /**
+        @brief Put a key-value pair into the cache
+        @param key The key to create or update
+        @param value The value to associate with the key
+        @return true if the key existed and was updated, false if the key was created
+    */
+    bool put(const KeyT &key, const ValueT &value) noexcept;
+
+    /**
+        @brief Insert or replace like @c put, returning any entry trimmed for capacity.
+        @return The evicted (key, value) when a novel insert forced an LRU trim;
+                @c std::nullopt on update-of-existing or when no trim occurred.
+    */
+    [[nodiscard]] std::optional<std::pair<KeyT, ValueT>> put_reporting_eviction(const KeyT &key,
+                                                                                ValueT &&value) noexcept;
+
+    /**
+        @brief Insert or replace like @c put, returning any entry trimmed for capacity.
+    */
+    [[nodiscard]] std::optional<std::pair<KeyT, ValueT>> put_reporting_eviction(KeyT &&key,
+                                                                                ValueT &&value) noexcept;
+
+    /**
+        @brief Visit entries from MRU to LRU.
+        @param fn Invoked as @c fn(const KeyT&, const ValueT&) for each entry.
+    */
+    template <typename Fn>
+    void for_each(Fn &&fn) const
+    {
+        for (const auto &node : mCache)
+            fn(node.first, node.second);
+    }
+
+    /**
+        @brief Visit entries from LRU to MRU.
+        @param fn Invoked as @c fn(const KeyT&, const ValueT&) for each entry.
+    */
+    template <typename Fn>
+    void for_each_lru_first(Fn &&fn) const
+    {
+        for (auto it = mCache.rbegin(); it != mCache.rend(); ++it)
+            fn(it->first, it->second);
+    }
+
+    /**
         @brief Get a reference to the value associated with the key
         @param key The key to search for
         @return A reference to the value associated with the key if it exists,
@@ -93,21 +163,14 @@ class LruCache
         @note This allows the value to be updated in place
     */
     [[nodiscard]] optional_ref<ValueT &> operator[](const KeyT &key) noexcept;
-
-    /**
-        @brief Put a key-value pair into the cache
-        @param key The key to create or update
-        @param value The value to associate with the key
-        @return true if the key existed and was updated, false if the key was created
-    */
-    bool put(const KeyT &key, const ValueT &value) noexcept;
 };
 
 template <typename KeyT, typename ValueT, typename HashT>
-void LruCache<KeyT, ValueT, HashT>::trim_one() noexcept
+std::optional<typename LruCache<KeyT, ValueT, HashT>::Node>
+LruCache<KeyT, ValueT, HashT>::extract_lru_victim() noexcept
 {
     if (mCache.empty())
-        return;
+        return std::nullopt;
 
     for (auto it = mCache.end(); it != mCache.begin();)
     {
@@ -115,14 +178,23 @@ void LruCache<KeyT, ValueT, HashT>::trim_one() noexcept
         if (mPinnedKey && it->first == *mPinnedKey)
             continue;
 
-        mMap.erase(it->first);
+        Node out = std::move(*it);
+        mMap.erase(out.first);
         mCache.erase(it);
-        return;
+        return out;
     }
 
     // Every entry is pinned — evict LRU anyway.
-    mMap.erase(mCache.back().first);
+    Node out = std::move(mCache.back());
+    mMap.erase(out.first);
     mCache.pop_back();
+    return out;
+}
+
+template <typename KeyT, typename ValueT, typename HashT>
+void LruCache<KeyT, ValueT, HashT>::trim_one() noexcept
+{
+    (void)extract_lru_victim();
 }
 
 template <typename KeyT, typename ValueT, typename HashT>
@@ -169,6 +241,34 @@ optional_ref<const ValueT &> LruCache<KeyT, ValueT, HashT>::peek(const KeyT &key
 }
 
 template <typename KeyT, typename ValueT, typename HashT>
+bool LruCache<KeyT, ValueT, HashT>::touch(const KeyT &key) noexcept
+{
+    auto it = mMap.find(key);
+    if (it == mMap.end())
+        return false;
+
+    mCache.splice(mCache.begin(), mCache, it->second);
+    return true;
+}
+
+template <typename KeyT, typename ValueT, typename HashT>
+bool LruCache<KeyT, ValueT, HashT>::update(const KeyT &key, ValueT &&value) noexcept
+{
+    auto it = mMap.find(key);
+    if (it == mMap.end())
+        return false;
+
+    it->second->second = std::move(value);
+    return true;
+}
+
+template <typename KeyT, typename ValueT, typename HashT>
+bool LruCache<KeyT, ValueT, HashT>::update(const KeyT &key, const ValueT &value) noexcept
+{
+    return update(key, ValueT(value));
+}
+
+template <typename KeyT, typename ValueT, typename HashT>
 bool LruCache<KeyT, ValueT, HashT>::erase(const KeyT &key) noexcept
 {
     auto it = mMap.find(key);
@@ -181,40 +281,67 @@ bool LruCache<KeyT, ValueT, HashT>::erase(const KeyT &key) noexcept
 }
 
 template <typename KeyT, typename ValueT, typename HashT>
-bool LruCache<KeyT, ValueT, HashT>::put(const KeyT &key, ValueT &&value) noexcept
+void LruCache<KeyT, ValueT, HashT>::clear() noexcept
+{
+    mCache.clear();
+    mMap.clear();
+}
+
+template <typename KeyT, typename ValueT, typename HashT>
+std::optional<std::pair<KeyT, ValueT>>
+LruCache<KeyT, ValueT, HashT>::put_reporting_eviction(const KeyT &key, ValueT &&value) noexcept
 {
     if (auto it = mMap.find(key); it != mMap.end())
     {
         mCache.splice(mCache.begin(), mCache, it->second);
         it->second->second = std::move(value);
-        return true;
+        return std::nullopt;
     }
 
+    std::optional<std::pair<KeyT, ValueT>> evicted;
     if (mCache.size() >= mCapacity)
-        trim_one();
+        evicted = extract_lru_victim();
 
     mCache.emplace_front(key, std::move(value));
     mMap[key] = mCache.begin();
-    return false;
+    return evicted;
+}
+
+template <typename KeyT, typename ValueT, typename HashT>
+std::optional<std::pair<KeyT, ValueT>>
+LruCache<KeyT, ValueT, HashT>::put_reporting_eviction(KeyT &&key, ValueT &&value) noexcept
+{
+    if (auto it = mMap.find(key); it != mMap.end())
+    {
+        mCache.splice(mCache.begin(), mCache, it->second);
+        it->second->second = std::move(value);
+        return std::nullopt;
+    }
+
+    std::optional<std::pair<KeyT, ValueT>> evicted;
+    if (mCache.size() >= mCapacity)
+        evicted = extract_lru_victim();
+
+    KeyT stored_key = std::move(key);
+    mCache.emplace_front(std::move(stored_key), std::move(value));
+    mMap[mCache.front().first] = mCache.begin();
+    return evicted;
+}
+
+template <typename KeyT, typename ValueT, typename HashT>
+bool LruCache<KeyT, ValueT, HashT>::put(const KeyT &key, ValueT &&value) noexcept
+{
+    const bool existed = mMap.find(key) != mMap.end();
+    (void)put_reporting_eviction(key, std::move(value));
+    return existed;
 }
 
 template <typename KeyT, typename ValueT, typename HashT>
 bool LruCache<KeyT, ValueT, HashT>::put(KeyT &&key, ValueT &&value) noexcept
 {
-    if (auto it = mMap.find(key); it != mMap.end())
-    {
-        mCache.splice(mCache.begin(), mCache, it->second);
-        it->second->second = std::move(value);
-        return true;
-    }
-
-    if (mCache.size() >= mCapacity)
-        trim_one();
-
-    KeyT stored_key = std::move(key);
-    mCache.emplace_front(std::move(stored_key), std::move(value));
-    mMap[mCache.front().first] = mCache.begin();
-    return false;
+    const bool existed = mMap.find(key) != mMap.end();
+    (void)put_reporting_eviction(std::move(key), std::move(value));
+    return existed;
 }
 
 template <typename KeyT, typename ValueT, typename HashT>
