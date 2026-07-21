@@ -274,13 +274,13 @@ inline std::vector<std::uint8_t> SslEvpPkeyCtx::DeriveTls1Prf(Key secret,
     ctx.InitDerivation();
 
     if (EVP_PKEY_CTX_set_tls1_prf_md(ctx, EVP_md5_sha1()) <= 0)
-        throw SslException("EVP_PKEY_CTX_set_tls1_prf_md failed");
+        ThrowSsl("EVP_PKEY_CTX_set_tls1_prf_md failed");
 
     if (EVP_PKEY_CTX_set1_tls1_prf_secret(ctx, secret.data(), static_cast<int>(secret.size())) <= 0)
-        throw SslException("EVP_PKEY_CTX_set1_tls1_prf_secret failed");
+        ThrowSsl("EVP_PKEY_CTX_set1_tls1_prf_secret failed");
 
     if (EVP_PKEY_CTX_add1_tls1_prf_seed(ctx, seed.data(), static_cast<int>(seed.size())) <= 0)
-        throw SslException("EVP_PKEY_CTX_add1_tls1_prf_seed failed");
+        ThrowSsl("EVP_PKEY_CTX_add1_tls1_prf_seed failed");
 
     std::vector<std::uint8_t> output(length);
     ctx.Derive(Output(output.data(), output.size()));
@@ -295,13 +295,13 @@ inline std::array<std::uint8_t, N> SslEvpPkeyCtx::DeriveTls1Prf(Key secret,
     ctx.InitDerivation();
 
     if (EVP_PKEY_CTX_set_tls1_prf_md(ctx, EVP_md5_sha1()) <= 0)
-        throw SslException("EVP_PKEY_CTX_set_tls1_prf_md failed");
+        ThrowSsl("EVP_PKEY_CTX_set_tls1_prf_md failed");
 
     if (EVP_PKEY_CTX_set1_tls1_prf_secret(ctx, secret.data(), static_cast<int>(secret.size())) <= 0)
-        throw SslException("EVP_PKEY_CTX_set1_tls1_prf_secret failed");
+        ThrowSsl("EVP_PKEY_CTX_set1_tls1_prf_secret failed");
 
     if (EVP_PKEY_CTX_add1_tls1_prf_seed(ctx, seed.data(), static_cast<int>(seed.size())) <= 0)
-        throw SslException("EVP_PKEY_CTX_add1_tls1_prf_seed failed");
+        ThrowSsl("EVP_PKEY_CTX_add1_tls1_prf_seed failed");
 
     std::array<std::uint8_t, N> output;
     ctx.Derive(Output(output.data(), output.size()));
@@ -364,11 +364,11 @@ inline std::vector<std::uint8_t> SslEvpPkeyCtx::ExtractHkdf(const EVP_MD *md,
                                                             Salt salt)
 {
     if (!md)
-        throw SslException("ExtractHkdf: md cannot be null");
+        ThrowSslApp("ExtractHkdf: md cannot be null");
 
     const int digest_size = EVP_MD_size(md);
     if (digest_size <= 0)
-        throw SslException("ExtractHkdf: invalid digest size");
+        ThrowSslApp("ExtractHkdf: invalid digest size");
 
     std::vector<std::uint8_t> prk(static_cast<std::size_t>(digest_size));
 
@@ -407,19 +407,19 @@ inline std::array<std::uint8_t, N> SslEvpPkeyCtx::ExpandHkdf(const EVP_MD *md,
 inline void SslEvpPkeyCtx::InitDerivation()
 {
     if (EVP_PKEY_derive_init(*this) <= 0)
-        throw SslException("EVP_PKEY_derive_init failed");
+        ThrowSsl("EVP_PKEY_derive_init failed");
 }
 
 inline void SslEvpPkeyCtx::SetHkdfMode(int mode)
 {
     if (EVP_PKEY_CTX_hkdf_mode(*this, mode) <= 0)
-        throw SslException("EVP_PKEY_CTX_hkdf_mode failed");
+        ThrowSsl("EVP_PKEY_CTX_hkdf_mode failed");
 }
 
 inline void SslEvpPkeyCtx::SetHkdfMd(const EVP_MD *md)
 {
     if (EVP_PKEY_CTX_set_hkdf_md(*this, md) <= 0)
-        throw SslException("EVP_PKEY_CTX_set_hkdf_md failed");
+        ThrowSsl("EVP_PKEY_CTX_set_hkdf_md failed");
 }
 
 inline void SslEvpPkeyCtx::SetHkdfSalt(Salt salt)
@@ -427,26 +427,26 @@ inline void SslEvpPkeyCtx::SetHkdfSalt(Salt salt)
     if (salt.empty())
         return; // RFC 5869: empty salt is valid; OpenSSL uses a default of HashLen zeros
     if (EVP_PKEY_CTX_set1_hkdf_salt(*this, salt.data(), static_cast<int>(salt.size())) <= 0)
-        throw SslException("EVP_PKEY_CTX_set1_hkdf_salt failed");
+        ThrowSsl("EVP_PKEY_CTX_set1_hkdf_salt failed");
 }
 
 inline void SslEvpPkeyCtx::SetHkdfKey(Key key)
 {
     if (EVP_PKEY_CTX_set1_hkdf_key(*this, key.data(), static_cast<int>(key.size())) <= 0)
-        throw SslException("EVP_PKEY_CTX_set1_hkdf_key failed");
+        ThrowSsl("EVP_PKEY_CTX_set1_hkdf_key failed");
 }
 
 inline void SslEvpPkeyCtx::AddHkdfInfo(Info info)
 {
     if (EVP_PKEY_CTX_add1_hkdf_info(*this, info.data(), static_cast<int>(info.size())) <= 0)
-        throw SslException("EVP_PKEY_CTX_add1_hkdf_info failed");
+        ThrowSsl("EVP_PKEY_CTX_add1_hkdf_info failed");
 }
 
 inline void SslEvpPkeyCtx::Derive(Output output)
 {
     std::size_t outlen = output.size();
     if (EVP_PKEY_derive(*this, output.data(), &outlen) <= 0 || outlen != output.size())
-        throw SslException("EVP_PKEY_derive failed");
+        ThrowSsl("EVP_PKEY_derive failed");
 }
 
 } // namespace clv::OpenSSL

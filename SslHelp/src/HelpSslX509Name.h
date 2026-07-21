@@ -46,7 +46,7 @@ struct SslX509Name : SslNoRcCopy<SslX509Name, X509_NAME,
         auto k = std::string(key);
         auto v = std::string(value);
         if (X509_NAME_add_entry_by_txt(Get(), k.c_str(), MBSTRING_UTF8, reinterpret_cast<const unsigned char *>(v.c_str()), -1, -1, 0) != 1)
-            throw SslException("X509_NAME_add_entry_by_txt failed");
+            ThrowSsl("X509_NAME_add_entry_by_txt failed");
     }
 
   private: // Making private until I can sort out my 'exception guarantee' policy here

@@ -70,7 +70,7 @@ inline SslAsn1Integer::SslAsn1Integer(int64_t i)
     : SslAsn1Integer()
 {
     if (ASN1_INTEGER_set_int64(Get(), i) != 1)
-        throw SslException("ASN1_INTEGER_set_int64() failed");
+        ThrowSsl("ASN1_INTEGER_set_int64() failed");
 }
 /**
     @brief Initialize an OpenSSL ASN1 integer with the given value
@@ -80,7 +80,7 @@ inline SslAsn1Integer::SslAsn1Integer(uint64_t i)
     : SslAsn1Integer()
 {
     if (ASN1_INTEGER_set_uint64(Get(), i) != 1)
-        throw SslException("ASN1_INTEGER_set_uint64() failed");
+        ThrowSsl("ASN1_INTEGER_set_uint64() failed");
 }
 /**
     @brief Extract the value stored in the ASN1 and return it as an int64_t
@@ -90,7 +90,7 @@ inline auto SslAsn1Integer::AsInt() const
 {
     int64_t result = 0;
     if (ASN1_INTEGER_get_int64(&result, Get()) != 1)
-        throw SslException("ASN1_INTEGER_get_int64() failed");
+        ThrowSsl("ASN1_INTEGER_get_int64() failed");
     return result;
 }
 /**
@@ -101,7 +101,7 @@ inline auto SslAsn1Integer::AsUint() const
 {
     uint64_t result = 0;
     if (ASN1_INTEGER_get_uint64(&result, Get()) != 1)
-        throw SslException("ASN1_INTEGER_get_uint64() failed");
+        ThrowSsl("ASN1_INTEGER_get_uint64() failed");
     return result;
 }
 /**
@@ -112,7 +112,7 @@ inline SslAsn1Integer SslAsn1Integer::Random64()
 {
     uint64_t rand64;
     if (RAND_bytes(reinterpret_cast<unsigned char *>(&rand64), sizeof(rand64)) != 1)
-        throw SslException("RAND_bytes() failed");
+        ThrowSsl("RAND_bytes() failed");
     return SslAsn1Integer(rand64);
 }
 
@@ -204,7 +204,7 @@ inline SslAsn1OctetString::SslAsn1OctetString(std::string_view str)
                               reinterpret_cast<const unsigned char *>(str.data()),
                               static_cast<int>(str.length()))
         != 1)
-        throw SslException("ASN1_OCTET_STRING_set() failed");
+        ThrowSsl("ASN1_OCTET_STRING_set() failed");
 }
 
 //  ===============================================================================================
@@ -231,7 +231,7 @@ inline SslAsn1String::SslAsn1String(std::string_view str)
                         reinterpret_cast<const unsigned char *>(str.data()),
                         static_cast<int>(str.length()))
         != 1)
-        throw SslException("ASN1_STRING_set() failed");
+        ThrowSsl("ASN1_STRING_set() failed");
 }
 
 //  ===============================================================================================

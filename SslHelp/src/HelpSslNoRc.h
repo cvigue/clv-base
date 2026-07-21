@@ -208,8 +208,8 @@ template <typename OpenSslT, auto SslAlloc, void (*SslFree)(OpenSslT *)>
 void SslNoRc<OpenSslT, SslAlloc, SslFree>::ThrowIfNull(std::string_view msg) const
 {
     if (!mSslPtr)
-        throw SslException(std::string("SslNoRc::ThrowIfNull() mSslPtr == null")
-                           + (msg.empty() ? "" : ": " + std::string(msg)));
+        ThrowSslApp(std::string("SslNoRc::ThrowIfNull() mSslPtr == null")
+                    + (msg.empty() ? "" : ": " + std::string(msg)));
 }
 /**
     @brief Reset the managed pointer to nullptr
@@ -237,7 +237,7 @@ void SslNoRc<OpenSslT, SslAlloc, SslFree>::Reset(OpenSslT *ptr)
 {
     mSslPtr.reset(ptr);
     if (!mSslPtr)
-        throw SslException("SslNoRc::Reset mSslPtr == null");
+        ThrowSslApp("SslNoRc::Reset mSslPtr == null");
 }
 /**
     @brief Stop managing the current pointer and return it for unmanaged use.

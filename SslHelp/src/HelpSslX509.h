@@ -114,7 +114,7 @@ struct SslX509 : SslWithRc<X509, &X509_new, &X509_free, &X509_up_ref>
         const std::uint8_t *p = der.data();
         X509 *raw = d2i_X509(nullptr, &p, static_cast<long>(der.size()));
         if (raw == nullptr)
-            throw SslException("d2i_X509 failed");
+            ThrowSsl("d2i_X509 failed");
         return SslX509(raw);
     }
 
@@ -131,11 +131,11 @@ inline std::vector<std::uint8_t> SslX509::GetDER() const
     X509 *cert = const_cast<X509 *>(Get());
     const int len = i2d_X509(cert, nullptr);
     if (len <= 0)
-        throw SslException("i2d_X509 failed");
+        ThrowSsl("i2d_X509 failed");
     std::vector<std::uint8_t> der(static_cast<std::size_t>(len));
     std::uint8_t *p = der.data();
     if (i2d_X509(cert, &p) <= 0)
-        throw SslException("i2d_X509 failed");
+        ThrowSsl("i2d_X509 failed");
     return der;
 }
 /**
@@ -149,7 +149,7 @@ inline SslX509::SslX509(std::string_view buffer)
     bio.ThrowIfNull("BIO_new_mem_buf failed");
     auto cert = PEM_read_bio_X509(bio.Get(), nullptr, nullptr, nullptr);
     if (!cert)
-        throw SslException("PEM_read_bio_X509 failed");
+        ThrowSsl("PEM_read_bio_X509 failed");
     *this = SslX509(cert);
 }
 /**
@@ -194,7 +194,7 @@ inline SslX509::SslX509(SslX509 &ca,
 inline void SslX509::SetSerialNumber(SslAsn1Integer &&sn)
 {
     if (X509_set_serialNumber(Get(), sn.Get()) != 1)
-        throw SslException("X509_set_serialNumber failed");
+        ThrowSsl("X509_set_serialNumber failed");
 }
 /**
     @brief Return cert serial in ASN1 number wrapper
@@ -204,7 +204,7 @@ inline SslAsn1Integer SslX509::GetSerialNumber()
 {
     auto *serial = X509_get_serialNumber(Get());
     if (!serial)
-        throw SslException("X509_get_serialNumber failed");
+        ThrowSsl("X509_get_serialNumber failed");
     return SslAsn1Integer(ASN1_INTEGER_dup(serial));
 }
 /**
@@ -229,7 +229,7 @@ inline void SslX509::CopySelectedExtensions(SslX509 src, std::initializer_list<i
                 if (type == nid)
                 {
                     if (X509_add_ext(Get(), ext, -1) != 1)
-                        throw SslException("X509_add_ext failed");
+                        ThrowSsl("X509_add_ext failed");
                 }
             }
         }
@@ -242,7 +242,7 @@ inline void SslX509::CopySelectedExtensions(SslX509 src, std::initializer_list<i
 inline void SslX509::SetIssuerName(const SslX509Name &issuer)
 {
     if (X509_set_issuer_name(Get(), issuer.Get()) != 1)
-        throw SslException("X509_set_issuer_name failed");
+        ThrowSsl("X509_set_issuer_name failed");
 }
 /**
     @brief Set subject name field with X509_set_subject_name
@@ -251,7 +251,7 @@ inline void SslX509::SetIssuerName(const SslX509Name &issuer)
 inline void SslX509::SetSubjectName(const SslX509Name &subject)
 {
     if (X509_set_subject_name(Get(), subject.Get()) != 1)
-        throw SslException("X509_set_subject_name failed");
+        ThrowSsl("X509_set_subject_name failed");
 }
 /**
     @brief Get issuer name via X509_get_issuer_name
@@ -261,7 +261,7 @@ inline SslX509Name SslX509::GetIssuerName()
 {
     auto *name = X509_get_issuer_name(Get());
     if (!name)
-        throw SslException("X509_get_issuer_name failed");
+        ThrowSsl("X509_get_issuer_name failed");
     return SslX509Name(X509_NAME_dup(name));
 }
 /**
@@ -272,7 +272,7 @@ inline SslX509Name SslX509::GetSubjectName()
 {
     auto *name = X509_get_subject_name(Get());
     if (!name)
-        throw SslException("X509_get_subject_name failed");
+        ThrowSsl("X509_get_subject_name failed");
     return SslX509Name(X509_NAME_dup(name));
 }
 /**
@@ -295,7 +295,7 @@ inline void SslX509::PemRead(std::istream &&s)
     auto bio = SslBio(BIO_new_mem_buf(pemData.data(), -1));
     auto cert = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr);
     if (!cert)
-        throw SslException("PEM_read_bio_X509 failed");
+        ThrowSsl("PEM_read_bio_X509 failed");
     *this = SslX509(cert);
 }
 
@@ -489,7 +489,7 @@ inline std::string SslX509::GetFingerprint(const EVP_MD *md) const
     unsigned int digest_len = 0;
 
     if (X509_digest(Get(), md, digest, &digest_len) != 1)
-        throw SslException("X509_digest failed");
+        ThrowSsl("X509_digest failed");
 
     // Convert to hex string
     std::string result;
@@ -651,7 +651,7 @@ inline std::vector<SslX509> SslX509::LoadChainFromFile(const std::filesystem::pa
 
     std::unique_ptr<FILE, decltype(&FileDeleter)> fp(fopen(file.string().c_str(), "r"), &FileDeleter);
     if (!fp)
-        throw SslException("Failed to open certificate chain file");
+        ThrowSslApp("Failed to open certificate chain file");
 
     X509 *cert = nullptr;
     while ((cert = PEM_read_X509(fp.get(), nullptr, nullptr, nullptr)) != nullptr)
@@ -660,7 +660,7 @@ inline std::vector<SslX509> SslX509::LoadChainFromFile(const std::filesystem::pa
     }
 
     if (chain.empty())
-        throw SslException("No certificates found in chain file");
+        ThrowSslApp("No certificates found in chain file");
 
     return chain;
 }

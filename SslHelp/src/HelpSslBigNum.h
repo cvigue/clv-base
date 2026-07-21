@@ -93,7 +93,7 @@ auto mul(const SslBigNumOps<BnT> &lh, const SslBigNumOps<BnT> &rh, SslBnContext 
 {
     BnT r;
     if (BN_mul(r.BN(), lh.BN(), rh.BN(), ctx) != 1)
-        throw SslException("BN_mul() exception");
+        ThrowSsl("BN_mul() exception");
     return r;
 }
 /**
@@ -113,7 +113,7 @@ auto div(const SslBigNumOps<BnT> &lh, const SslBigNumOps<BnT> &rh, SslBnContext 
     BnT r;
     BnT rem;
     if (BN_div(r.BN(), rem.BN(), lh.BN(), rh.BN(), ctx) != 1)
-        throw SslException("BN_div() exception");
+        ThrowSsl("BN_div() exception");
     return std::tuple(std::move(r), std::move(rem));
 }
 /**
@@ -130,7 +130,7 @@ auto pow(const SslBigNumOps<BnT> &a, const SslBigNumOps<BnT> &p, SslBnContext &c
 {
     BnT r;
     if (BN_exp(r.BN(), a.BN(), p.BN(), ctx) != 1)
-        throw SslException("BN_exp() exception");
+        ThrowSsl("BN_exp() exception");
     return r;
 }
 /**
@@ -178,7 +178,7 @@ auto operator+(const SslBigNumOps<BnT> &lh, const SslBigNumOps<BnT> &rh)
 {
     BnT r;
     if (BN_add(r.BN(), lh.BN(), rh.BN()) != 1)
-        throw SslException("BN_add() exception");
+        ThrowSsl("BN_add() exception");
     return r;
 }
 template <typename BnT>
@@ -186,7 +186,7 @@ auto operator-(const SslBigNumOps<BnT> &lh, const SslBigNumOps<BnT> &rh)
 {
     BnT r;
     if (BN_sub(r.BN(), lh.BN(), rh.BN()) != 1)
-        throw SslException("BN_sub() exception");
+        ThrowSsl("BN_sub() exception");
     return r;
 }
 template <typename BnT>
@@ -209,7 +209,7 @@ auto operator<<(const SslBigNumOps<BnT> &lh, const int shift)
 {
     BnT r;
     if (BN_lshift(r.BN(), lh.BN(), shift) != 1)
-        throw SslException("BN_lshift() exception");
+        ThrowSsl("BN_lshift() exception");
     return r;
 }
 template <typename BnT>
@@ -217,7 +217,7 @@ auto operator>>(const SslBigNumOps<BnT> &lh, const int shift)
 {
     BnT r;
     if (BN_rshift(r.BN(), lh.BN(), shift) != 1)
-        throw SslException("BN_rshift() exception");
+        ThrowSsl("BN_rshift() exception");
     return r;
 }
 // ================================================================================================
@@ -233,7 +233,7 @@ template <typename BnT>
 SslBigNumOps<BnT>::SslBigNumOps(uint64_t i)
 {
     if (BN_set_word(BN(), i) != 1)
-        throw SslException("BN_set_word() failed");
+        ThrowSsl("BN_set_word() failed");
 }
 /**
     @brief Return the number of bytes used in the BN to store the value.
@@ -256,7 +256,7 @@ auto SslBigNumOps<BnT>::AsUint() const
 {
     if (auto result = BN_get_word(BN()); result != std::numeric_limits<BN_ULONG>::max())
         return result;
-    throw SslException("BN_get_word conversion to BN_ULONG failed");
+    ThrowSsl("BN_get_word conversion to BN_ULONG failed");
 }
 /**
     @brief Set the bit at the given offset
@@ -269,7 +269,7 @@ template <typename BnT>
 void SslBigNumOps<BnT>::SetBit(int index)
 {
     if (BN_set_bit(BN(), index) != 1)
-        throw SslException("BN_set_bit() failed");
+        ThrowSsl("BN_set_bit() failed");
 }
 /**
     @brief Clear the bit at the given offset
@@ -281,7 +281,7 @@ template <typename BnT>
 void SslBigNumOps<BnT>::ClrBit(int index)
 {
     if (BN_clear_bit(BN(), index) != 1)
-        throw SslException("BN_clear_bit() failed");
+        ThrowSsl("BN_clear_bit() failed");
 }
 /**
     @brief Test the bit at the given offset
@@ -306,7 +306,7 @@ auto &SslBigNumOps<BnT>::operator+=(const SslBigNumOps &rh)
 {
     // Does not use helper above to avoid CTOR costs for temps
     if (BN_add(BN(), BN(), rh.BN()) != 1)
-        throw SslException("BN_add() exception");
+        ThrowSsl("BN_add() exception");
     return *this;
 }
 /**
@@ -320,7 +320,7 @@ auto &SslBigNumOps<BnT>::operator-=(const SslBigNumOps &rh)
 {
     // Does not use helper above to avoid CTOR costs for temps
     if (BN_sub(BN(), BN(), rh.BN()) != 1)
-        throw SslException("BN_sub() exception");
+        ThrowSsl("BN_sub() exception");
     return *this;
 }
 /**
@@ -335,7 +335,7 @@ auto &SslBigNumOps<BnT>::operator*=(const SslBigNumOps &rh)
     // Does not use helper above to avoid CTOR costs for temps
     SslBnContext ctx; // TODO: if this is costly consider using a cache
     if (BN_mul(BN(), BN(), rh.BN(), ctx) != 1)
-        throw SslException("BN_mul() exception");
+        ThrowSsl("BN_mul() exception");
     return *this;
 }
 /**
@@ -352,7 +352,7 @@ auto &SslBigNumOps<BnT>::operator/=(const SslBigNumOps &rh)
     SslBnContext ctx; // TODO: if this is costly consider using a cache
     BnT rem;
     if (BN_div(BN(), rem.BN(), BN(), rh.BN(), ctx) != 1)
-        throw SslException("BN_div() exception");
+        ThrowSsl("BN_div() exception");
     return *this;
 }
 /**

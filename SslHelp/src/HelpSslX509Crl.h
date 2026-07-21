@@ -77,16 +77,16 @@ struct SslX509Crl : SslWithRc<X509_CRL, &X509_CRL_new, &X509_CRL_free, &X509_CRL
 inline X509_CRL *SslX509Crl::LoadFromFile(const std::filesystem::path &crl_file)
 {
     if (!std::filesystem::exists(crl_file))
-        throw SslException("CRL file not found: " + crl_file.string());
+        ThrowSslApp("CRL file not found: " + crl_file.string());
 
     std::unique_ptr<FILE, decltype(&FileDeleter)> fp(fopen(crl_file.string().c_str(), "r"), &FileDeleter);
     if (!fp)
-        throw SslException("Failed to open CRL file: " + crl_file.string());
+        ThrowSslApp("Failed to open CRL file: " + crl_file.string());
 
     X509_CRL *crl = PEM_read_X509_CRL(fp.get(), nullptr, nullptr, nullptr);
 
     if (!crl)
-        throw SslException("Failed to read CRL from file");
+        ThrowSsl("Failed to read CRL from file");
 
     return crl;
 }

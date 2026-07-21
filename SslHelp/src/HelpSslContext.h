@@ -45,22 +45,22 @@ struct SslContext : SslWithRc<SSL_CTX, SSL_CTX_new, SSL_CTX_free, SSL_CTX_up_ref
     void SetOptions(long options)
     {
         if (SSL_CTX_set_options(Get(), options) == 0)
-            throw SslException("SSL_CTX_set_options failed");
+            ThrowSsl("SSL_CTX_set_options failed");
     }
     void ClearOptions(long options)
     {
         if (SSL_CTX_clear_options(Get(), options) == 0)
-            throw SslException("SSL_CTX_clear_options failed");
+            ThrowSsl("SSL_CTX_clear_options failed");
     }
     void SetCipherList(const std::string &ciphers)
     {
         if (SSL_CTX_set_cipher_list(Get(), ciphers.c_str()) == 0)
-            throw SslException("SSL_CTX_set_cipher_list failed");
+            ThrowSsl("SSL_CTX_set_cipher_list failed");
     }
     void SetCurvesList(const std::string &curves)
     {
         if (SSL_CTX_set1_curves_list(Get(), curves.c_str()) == 0)
-            throw SslException("SSL_CTX_set1_curves_list failed");
+            ThrowSsl("SSL_CTX_set1_curves_list failed");
     }
     void SetVerifyMode(int mode, int (*callback)(int, X509_STORE_CTX *) = nullptr) noexcept
     {
@@ -73,24 +73,24 @@ struct SslContext : SslWithRc<SSL_CTX, SSL_CTX_new, SSL_CTX_free, SSL_CTX_up_ref
     void SetDefaultVerifyPaths()
     {
         if (SSL_CTX_set_default_verify_paths(Get()) == 0)
-            throw SslException("SSL_CTX_set_default_verify_paths failed");
+            ThrowSsl("SSL_CTX_set_default_verify_paths failed");
     }
     void UsePrivateKeyFile(const std::filesystem::path &pvtKeyFile)
     {
         if (SSL_CTX_use_PrivateKey_file(Get(), pvtKeyFile.string().c_str(), SSL_FILETYPE_PEM) == 0)
-            throw SslException("SSL_CTX_use_PrivateKey_file failed");
+            ThrowSsl("SSL_CTX_use_PrivateKey_file failed");
     }
     void UseCertificateChainFile(const std::filesystem::path &certFile)
     {
         if (SSL_CTX_use_certificate_chain_file(Get(), certFile.string().c_str()) == 0)
-            throw SslException("SSL_CTX_use_certificate_chain_file failed");
+            ThrowSsl("SSL_CTX_use_certificate_chain_file failed");
     }
 
     /** Load certificate from X509 object */
     void UseCertificate(SslX509 &cert)
     {
         if (SSL_CTX_use_certificate(Get(), cert.Get()) != 1)
-            throw SslException("SSL_CTX_use_certificate failed");
+            ThrowSsl("SSL_CTX_use_certificate failed");
     }
 
     /** Load certificate from PEM string */
@@ -104,7 +104,7 @@ struct SslContext : SslWithRc<SSL_CTX, SSL_CTX_new, SSL_CTX_free, SSL_CTX_up_ref
     void UsePrivateKey(SslEvpKey &pkey)
     {
         if (SSL_CTX_use_PrivateKey(Get(), pkey.Get()) != 1)
-            throw SslException("SSL_CTX_use_PrivateKey failed");
+            ThrowSsl("SSL_CTX_use_PrivateKey failed");
     }
 
     /** Load private key from PEM string */
@@ -117,7 +117,7 @@ struct SslContext : SslWithRc<SSL_CTX, SSL_CTX_new, SSL_CTX_free, SSL_CTX_up_ref
     void LoadVerifyFile(const std::filesystem::path &caFile)
     {
         if (SSL_CTX_load_verify_file(Get(), caFile.string().c_str()) == 0)
-            throw SslException("SSL_CTX_load_verify_file failed");
+            ThrowSsl("SSL_CTX_load_verify_file failed");
     }
 
     /**
@@ -128,7 +128,7 @@ struct SslContext : SslWithRc<SSL_CTX, SSL_CTX_new, SSL_CTX_free, SSL_CTX_up_ref
     void UseCertStore(X509_STORE *store)
     {
         if (store == nullptr)
-            throw SslException("UseCertStore: store is null");
+            ThrowSslApp("UseCertStore: store is null");
         SSL_CTX_set1_cert_store(Get(), store);
     }
 
@@ -137,18 +137,18 @@ struct SslContext : SslWithRc<SSL_CTX, SSL_CTX_new, SSL_CTX_free, SSL_CTX_up_ref
     {
         X509_STORE *store = SSL_CTX_get_cert_store(Get());
         if (store == nullptr)
-            throw SslException("SSL_CTX_get_cert_store returned null");
+            ThrowSslApp("SSL_CTX_get_cert_store returned null");
         SslX509Store::Borrow(store).AddCertsFromPem(pem);
     }
     void SetMinProtoVersion(int version)
     {
         if (SSL_CTX_set_min_proto_version(Get(), version) == 0)
-            throw SslException("SSL_CTX_set_min_proto_version failed");
+            ThrowSsl("SSL_CTX_set_min_proto_version failed");
     }
     void SetMaxProtoVersion(int version)
     {
         if (SSL_CTX_set_max_proto_version(Get(), version) == 0)
-            throw SslException("SSL_CTX_set_max_proto_version failed");
+            ThrowSsl("SSL_CTX_set_max_proto_version failed");
     }
     bool SetCipherListNoEx(const char *ciphers)
     {
@@ -157,7 +157,7 @@ struct SslContext : SslWithRc<SSL_CTX, SSL_CTX_new, SSL_CTX_free, SSL_CTX_up_ref
     void SetCipherList(const char *ciphers)
     {
         if (!SetCipherListNoEx(ciphers))
-            throw SslException("SSL_CTX_set_cipher_list failed");
+            ThrowSsl("SSL_CTX_set_cipher_list failed");
     }
     bool SetMaxSendFragmentNoEx(size_t fragment_size)
     {
@@ -166,7 +166,7 @@ struct SslContext : SslWithRc<SSL_CTX, SSL_CTX_new, SSL_CTX_free, SSL_CTX_up_ref
     void SetMaxSendFragment(size_t fragment_size)
     {
         if (!SetMaxSendFragmentNoEx(fragment_size))
-            throw SslException("SSL_CTX_set_max_send_fragment failed");
+            ThrowSsl("SSL_CTX_set_max_send_fragment failed");
     }
 
     // ========================================================================================
@@ -181,7 +181,7 @@ struct SslContext : SslWithRc<SSL_CTX, SSL_CTX_new, SSL_CTX_free, SSL_CTX_up_ref
     {
         // SSL_CTX_set_alpn_protos returns 0 on success (unlike most OpenSSL functions!)
         if (SSL_CTX_set_alpn_protos(Get(), protos.data(), static_cast<unsigned int>(protos.size())) != 0)
-            throw SslException("SSL_CTX_set_alpn_protos failed");
+            ThrowSsl("SSL_CTX_set_alpn_protos failed");
     }
 
     /** ALPN selection callback type */

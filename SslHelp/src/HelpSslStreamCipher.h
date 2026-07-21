@@ -206,6 +206,21 @@ struct SslStreamCipherCtx : SslNoRc<EVP_CIPHER_CTX, EVP_CIPHER_CTX_new, EVP_CIPH
     // ========================================================================================
 
     /**
+     * @brief One-shot encryption (non-throwing)
+     * @tparam Traits Cipher traits (defaults to DefaultTraits)
+     * @param key Encryption key
+     * @param iv Initialization vector
+     * @param plaintext Data to encrypt
+     * @return Ciphertext, or SslError on failure
+     * @note Primary implementation; Encrypt is a thin throwing wrapper.
+     */
+    template <const StreamCipherTraits &Traits = DefaultTraits>
+    [[nodiscard]] SslExpected<std::vector<std::uint8_t>>
+    TryEncrypt(std::span<const std::uint8_t> key,
+               std::span<const std::uint8_t> iv,
+               std::span<const std::uint8_t> plaintext);
+
+    /**
      * @brief One-shot encryption
      * @tparam Traits Cipher traits (defaults to DefaultTraits)
      * @param key Encryption key
@@ -218,6 +233,21 @@ struct SslStreamCipherCtx : SslNoRc<EVP_CIPHER_CTX, EVP_CIPHER_CTX_new, EVP_CIPH
     std::vector<std::uint8_t> Encrypt(std::span<const std::uint8_t> key,
                                       std::span<const std::uint8_t> iv,
                                       std::span<const std::uint8_t> plaintext);
+
+    /**
+     * @brief One-shot decryption (non-throwing)
+     * @tparam Traits Cipher traits (defaults to DefaultTraits)
+     * @param key Decryption key
+     * @param iv Initialization vector
+     * @param ciphertext Data to decrypt
+     * @return Plaintext, or SslError on failure
+     * @note Primary implementation; Decrypt is a thin throwing wrapper.
+     */
+    template <const StreamCipherTraits &Traits = DefaultTraits>
+    [[nodiscard]] SslExpected<std::vector<std::uint8_t>>
+    TryDecrypt(std::span<const std::uint8_t> key,
+               std::span<const std::uint8_t> iv,
+               std::span<const std::uint8_t> ciphertext);
 
     /**
      * @brief One-shot decryption
@@ -239,6 +269,22 @@ struct SslStreamCipherCtx : SslNoRc<EVP_CIPHER_CTX, EVP_CIPHER_CTX_new, EVP_CIPH
 // ================================================================================================
 
 /**
+ * @brief One-shot stream cipher encryption (non-throwing; creates its own context)
+ * @tparam Traits Cipher traits specifying the algorithm
+ * @param key Encryption key
+ * @param iv Initialization vector
+ * @param plaintext Data to encrypt
+ * @return Ciphertext, or SslError on failure
+ * @note Example: TryEncrypt<AES_256_CTR_TRAITS>(key, iv, plaintext)
+ * @note Primary implementation; Encrypt is a thin throwing wrapper.
+ */
+template <const StreamCipherTraits &Traits>
+[[nodiscard]] SslExpected<std::vector<std::uint8_t>>
+TryEncrypt(std::span<const std::uint8_t> key,
+           std::span<const std::uint8_t> iv,
+           std::span<const std::uint8_t> plaintext);
+
+/**
  * @brief One-shot stream cipher encryption (creates its own context)
  * @tparam Traits Cipher traits specifying the algorithm
  * @param key Encryption key
@@ -253,6 +299,22 @@ std::vector<std::uint8_t>
 Encrypt(std::span<const std::uint8_t> key,
         std::span<const std::uint8_t> iv,
         std::span<const std::uint8_t> plaintext);
+
+/**
+ * @brief One-shot stream cipher decryption (non-throwing; creates its own context)
+ * @tparam Traits Cipher traits specifying the algorithm
+ * @param key Decryption key
+ * @param iv Initialization vector
+ * @param ciphertext Data to decrypt
+ * @return Plaintext, or SslError on failure
+ * @note Example: TryDecrypt<AES_256_CTR_TRAITS>(key, iv, ciphertext)
+ * @note Primary implementation; Decrypt is a thin throwing wrapper.
+ */
+template <const StreamCipherTraits &Traits>
+[[nodiscard]] SslExpected<std::vector<std::uint8_t>>
+TryDecrypt(std::span<const std::uint8_t> key,
+           std::span<const std::uint8_t> iv,
+           std::span<const std::uint8_t> ciphertext);
 
 /**
  * @brief One-shot stream cipher decryption (creates its own context)
@@ -280,7 +342,7 @@ inline void SslStreamCipherCtx<DefaultTraits>::InitEncrypt(std::span<const std::
                                                            std::span<const std::uint8_t> iv)
 {
     if (EVP_EncryptInit_ex(*this, Traits.cipher_fn(), nullptr, key.data(), iv.data()) != 1)
-        throw SslException(std::string(Traits.name) + " encrypt init failed");
+        ThrowSsl(std::string(Traits.name) + " encrypt init failed");
 
     if (!Traits.uses_padding)
         EVP_CIPHER_CTX_set_padding(*this, 0);
@@ -292,7 +354,7 @@ inline void SslStreamCipherCtx<DefaultTraits>::InitDecrypt(std::span<const std::
                                                            std::span<const std::uint8_t> iv)
 {
     if (EVP_DecryptInit_ex(*this, Traits.cipher_fn(), nullptr, key.data(), iv.data()) != 1)
-        throw SslException(std::string(Traits.name) + " decrypt init failed");
+        ThrowSsl(std::string(Traits.name) + " decrypt init failed");
 
     if (!Traits.uses_padding)
         EVP_CIPHER_CTX_set_padding(*this, 0);
@@ -311,7 +373,7 @@ SslStreamCipherCtx<DefaultTraits>::UpdateEncrypt(std::span<const std::uint8_t> p
     int outlen = 0;
 
     if (EVP_EncryptUpdate(*this, ciphertext.data(), &outlen, plaintext.data(), static_cast<int>(plaintext.size())) != 1)
-        throw SslException(std::string(Traits.name) + " encryption failed");
+        ThrowSsl(std::string(Traits.name) + " encryption failed");
 
     ciphertext.resize(static_cast<std::size_t>(outlen));
     return ciphertext;
@@ -330,7 +392,7 @@ SslStreamCipherCtx<DefaultTraits>::UpdateDecrypt(std::span<const std::uint8_t> c
     int outlen = 0;
 
     if (EVP_DecryptUpdate(*this, plaintext.data(), &outlen, ciphertext.data(), static_cast<int>(ciphertext.size())) != 1)
-        throw SslException(std::string(Traits.name) + " decryption failed");
+        ThrowSsl(std::string(Traits.name) + " decryption failed");
 
     plaintext.resize(static_cast<std::size_t>(outlen));
     return plaintext;
@@ -346,7 +408,7 @@ SslStreamCipherCtx<DefaultTraits>::FinalizeEncrypt()
     int outlen = 0;
 
     if (EVP_EncryptFinal_ex(*this, final_data.data(), &outlen) != 1)
-        throw SslException(std::string(Traits.name) + " encrypt finalization failed");
+        ThrowSsl(std::string(Traits.name) + " encrypt finalization failed");
 
     final_data.resize(static_cast<std::size_t>(outlen));
     return final_data;
@@ -361,7 +423,7 @@ SslStreamCipherCtx<DefaultTraits>::FinalizeDecrypt()
     int outlen = 0;
 
     if (EVP_DecryptFinal_ex(*this, final_data.data(), &outlen) != 1)
-        throw SslException(std::string(Traits.name) + " decrypt finalization failed");
+        ThrowSsl(std::string(Traits.name) + " decrypt finalization failed");
 
     final_data.resize(static_cast<std::size_t>(outlen));
     return final_data;
@@ -371,16 +433,89 @@ SslStreamCipherCtx<DefaultTraits>::FinalizeDecrypt()
 
 template <const StreamCipherTraits &DefaultTraits>
 template <const StreamCipherTraits &Traits>
+inline SslExpected<std::vector<std::uint8_t>>
+SslStreamCipherCtx<DefaultTraits>::TryEncrypt(std::span<const std::uint8_t> key,
+                                              std::span<const std::uint8_t> iv,
+                                              std::span<const std::uint8_t> plaintext)
+{
+    if (EVP_EncryptInit_ex(*this, Traits.cipher_fn(), nullptr, key.data(), iv.data()) != 1)
+        return std::unexpected(SslError::capture(std::string(Traits.name) + " encrypt init failed"));
+
+    if (!Traits.uses_padding)
+        EVP_CIPHER_CTX_set_padding(*this, 0);
+
+    std::vector<std::uint8_t> ciphertext;
+    if (!plaintext.empty())
+    {
+        ciphertext.resize(plaintext.size() + static_cast<std::size_t>(EVP_CIPHER_CTX_block_size(*this)));
+        int outlen = 0;
+        if (EVP_EncryptUpdate(*this,
+                              ciphertext.data(),
+                              &outlen,
+                              plaintext.data(),
+                              static_cast<int>(plaintext.size()))
+            != 1)
+            return std::unexpected(SslError::capture(std::string(Traits.name) + " encryption failed"));
+        ciphertext.resize(static_cast<std::size_t>(outlen));
+    }
+
+    std::vector<std::uint8_t> final_data(static_cast<std::size_t>(EVP_CIPHER_CTX_block_size(*this)));
+    int final_len = 0;
+    if (EVP_EncryptFinal_ex(*this, final_data.data(), &final_len) != 1)
+        return std::unexpected(SslError::capture(std::string(Traits.name) + " encrypt finalization failed"));
+    final_data.resize(static_cast<std::size_t>(final_len));
+    ciphertext.insert(ciphertext.end(), final_data.begin(), final_data.end());
+    return ciphertext;
+}
+
+template <const StreamCipherTraits &DefaultTraits>
+template <const StreamCipherTraits &Traits>
 inline std::vector<std::uint8_t>
 SslStreamCipherCtx<DefaultTraits>::Encrypt(std::span<const std::uint8_t> key,
                                            std::span<const std::uint8_t> iv,
                                            std::span<const std::uint8_t> plaintext)
 {
-    InitEncrypt<Traits>(key, iv);
-    auto ciphertext = UpdateEncrypt<Traits>(plaintext);
-    auto final_bytes = FinalizeEncrypt<Traits>();
-    ciphertext.insert(ciphertext.end(), final_bytes.begin(), final_bytes.end());
-    return ciphertext;
+    if (auto r = TryEncrypt<Traits>(key, iv, plaintext); r.has_value())
+        return *std::move(r);
+    else
+        throw SslException(std::move(r.error()));
+}
+
+template <const StreamCipherTraits &DefaultTraits>
+template <const StreamCipherTraits &Traits>
+inline SslExpected<std::vector<std::uint8_t>>
+SslStreamCipherCtx<DefaultTraits>::TryDecrypt(std::span<const std::uint8_t> key,
+                                              std::span<const std::uint8_t> iv,
+                                              std::span<const std::uint8_t> ciphertext)
+{
+    if (EVP_DecryptInit_ex(*this, Traits.cipher_fn(), nullptr, key.data(), iv.data()) != 1)
+        return std::unexpected(SslError::capture(std::string(Traits.name) + " decrypt init failed"));
+
+    if (!Traits.uses_padding)
+        EVP_CIPHER_CTX_set_padding(*this, 0);
+
+    std::vector<std::uint8_t> plaintext;
+    if (!ciphertext.empty())
+    {
+        plaintext.resize(ciphertext.size() + static_cast<std::size_t>(EVP_CIPHER_CTX_block_size(*this)));
+        int outlen = 0;
+        if (EVP_DecryptUpdate(*this,
+                              plaintext.data(),
+                              &outlen,
+                              ciphertext.data(),
+                              static_cast<int>(ciphertext.size()))
+            != 1)
+            return std::unexpected(SslError::capture(std::string(Traits.name) + " decryption failed"));
+        plaintext.resize(static_cast<std::size_t>(outlen));
+    }
+
+    std::vector<std::uint8_t> final_data(static_cast<std::size_t>(EVP_CIPHER_CTX_block_size(*this)));
+    int final_len = 0;
+    if (EVP_DecryptFinal_ex(*this, final_data.data(), &final_len) != 1)
+        return std::unexpected(SslError::capture(std::string(Traits.name) + " decrypt finalization failed"));
+    final_data.resize(static_cast<std::size_t>(final_len));
+    plaintext.insert(plaintext.end(), final_data.begin(), final_data.end());
+    return plaintext;
 }
 
 template <const StreamCipherTraits &DefaultTraits>
@@ -390,16 +525,25 @@ SslStreamCipherCtx<DefaultTraits>::Decrypt(std::span<const std::uint8_t> key,
                                            std::span<const std::uint8_t> iv,
                                            std::span<const std::uint8_t> ciphertext)
 {
-    InitDecrypt<Traits>(key, iv);
-    auto plaintext = UpdateDecrypt<Traits>(ciphertext);
-    auto final_bytes = FinalizeDecrypt<Traits>();
-    plaintext.insert(plaintext.end(), final_bytes.begin(), final_bytes.end());
-    return plaintext;
+    if (auto r = TryDecrypt<Traits>(key, iv, ciphertext); r.has_value())
+        return *std::move(r);
+    else
+        throw SslException(std::move(r.error()));
 }
 
 // ================================================================================================
 //  Free function implementations
 // ================================================================================================
+
+template <const StreamCipherTraits &Traits>
+inline SslExpected<std::vector<std::uint8_t>>
+TryEncrypt(std::span<const std::uint8_t> key,
+           std::span<const std::uint8_t> iv,
+           std::span<const std::uint8_t> plaintext)
+{
+    SslStreamCipherCtx<Traits> ctx;
+    return ctx.template TryEncrypt<Traits>(key, iv, plaintext);
+}
 
 template <const StreamCipherTraits &Traits>
 inline std::vector<std::uint8_t>
@@ -409,6 +553,16 @@ Encrypt(std::span<const std::uint8_t> key,
 {
     SslStreamCipherCtx<Traits> ctx;
     return ctx.Encrypt(key, iv, plaintext);
+}
+
+template <const StreamCipherTraits &Traits>
+inline SslExpected<std::vector<std::uint8_t>>
+TryDecrypt(std::span<const std::uint8_t> key,
+           std::span<const std::uint8_t> iv,
+           std::span<const std::uint8_t> ciphertext)
+{
+    SslStreamCipherCtx<Traits> ctx;
+    return ctx.template TryDecrypt<Traits>(key, iv, ciphertext);
 }
 
 template <const StreamCipherTraits &Traits>

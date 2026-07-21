@@ -3,6 +3,7 @@
 #include "HelpSslPkeyCrypto.h"
 #include "HelpSslX509.h"
 
+#include <openssl/err.h>
 #include <openssl/evp.h>
 
 #include <gtest/gtest.h>
@@ -70,6 +71,23 @@ TEST(SslPkeyCrypto, RsaOaepSha256Roundtrip)
     const auto unwrapped = RsaOaepSha256Decrypt(key, wrapped);
     ASSERT_EQ(cek.size(), unwrapped.size());
     EXPECT_EQ(0, std::memcmp(cek.data(), unwrapped.data(), cek.size()));
+}
+
+TEST(SslPkeyCrypto, TryRsaOaepSha256RoundtripAndCorruptFails)
+{
+    const SslEvpKey key(2048);
+    const auto cek = RandomBytes<32>();
+    auto wrapped = TryRsaOaepSha256Encrypt(key, cek);
+    ASSERT_TRUE(wrapped.has_value());
+    auto unwrapped = TryRsaOaepSha256Decrypt(key, *wrapped);
+    ASSERT_TRUE(unwrapped.has_value());
+    ASSERT_EQ(cek.size(), unwrapped->size());
+    EXPECT_EQ(0, std::memcmp(cek.data(), unwrapped->data(), cek.size()));
+
+    (*wrapped)[0] ^= 0x5a;
+    auto bad = TryRsaOaepSha256Decrypt(key, *wrapped);
+    EXPECT_FALSE(bad.has_value());
+    EXPECT_EQ(ERR_peek_error(), 0u);
 }
 
 TEST(SslPkeyCrypto, EcdhP256HkdfRoundtrip)

@@ -12,6 +12,7 @@
 #include "openssl/obj_mac.h"
 #include "openssl/x509.h"
 
+#include <expected>
 #include <openssl/ec.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
@@ -22,6 +23,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace clv::OpenSSL {
@@ -39,7 +41,7 @@ inline void RandomBytes(std::span<std::uint8_t> out)
     if (out.empty())
         return;
     if (RAND_bytes(out.data(), static_cast<int>(out.size())) != 1)
-        throw SslException("RAND_bytes failed");
+        ThrowSsl("RAND_bytes failed");
 }
 
 template <std::size_t N>
@@ -59,21 +61,38 @@ inline SslEvpKey PublicKeyFromCert(const SslX509 &cert)
 {
     EVP_PKEY *pkey = X509_get_pubkey(const_cast<X509 *>(cert.Get()));
     if (!pkey)
-        throw SslException("X509_get_pubkey failed");
+        ThrowSsl("X509_get_pubkey failed");
     return SslEvpKey(pkey);
 }
 
 /**
- * @brief Borrow the certificate embedded public key as an @c SslEvpKey.
- * @details Uses @c X509_get0_pubkey plus @c EVP_PKEY_up_ref. The returned key remains valid
- *          after @p cert is destroyed.
+ * @brief Borrow the certificate embedded public key as an @c SslEvpKey (non-throwing).
+ * @param cert Certificate whose embedded public key is borrowed
+ * @return Owning @c SslEvpKey (via up-ref), or SslError if the cert has no public key
+ * @note Uses @c X509_get0_pubkey plus @c EVP_PKEY_up_ref.
+ * @note Primary implementation; BorrowPublicKeyFromCert is a thin throwing wrapper.
  */
-inline SslEvpKey BorrowPublicKeyFromCert(const SslX509 &cert)
+[[nodiscard]] inline SslExpected<SslEvpKey> TryBorrowPublicKeyFromCert(const SslX509 &cert)
 {
     EVP_PKEY *pkey = X509_get0_pubkey(const_cast<X509 *>(cert.Get()));
     if (!pkey)
-        throw SslException("X509_get0_pubkey failed");
+        return std::unexpected(SslError::capture("X509_get0_pubkey failed"));
     return SslEvpKey::Borrow(pkey);
+}
+
+/**
+ * @brief Borrow the certificate embedded public key as an @c SslEvpKey.
+ * @param cert Certificate whose embedded public key is borrowed
+ * @return Owning @c SslEvpKey (via up-ref); remains valid after @p cert is destroyed
+ * @throws SslException if the certificate has no public key
+ * @details Uses @c X509_get0_pubkey plus @c EVP_PKEY_up_ref.
+ */
+inline SslEvpKey BorrowPublicKeyFromCert(const SslX509 &cert)
+{
+    if (auto r = TryBorrowPublicKeyFromCert(cert); r.has_value())
+        return *std::move(r);
+    else
+        throw SslException(std::move(r.error()));
 }
 
 /**
@@ -83,25 +102,42 @@ inline std::vector<std::uint8_t> ExportPublicKeyDer(const SslEvpKey &key)
 {
     const int der_len = i2d_PUBKEY(const_cast<EVP_PKEY *>(key.Get()), nullptr);
     if (der_len <= 0)
-        throw SslException("i2d_PUBKEY size query failed");
+        ThrowSsl("i2d_PUBKEY size query failed");
 
     std::vector<std::uint8_t> der(static_cast<std::size_t>(der_len));
     std::uint8_t *p = der.data();
     if (i2d_PUBKEY(const_cast<EVP_PKEY *>(key.Get()), &p) <= 0)
-        throw SslException("i2d_PUBKEY failed");
+        ThrowSsl("i2d_PUBKEY failed");
     return der;
 }
 
 /**
- * @brief Import an SPKI DER blob as an @c SslEvpKey (public key only).
+ * @brief Import an SPKI DER blob as an @c SslEvpKey (public key only, non-throwing).
+ * @param der SubjectPublicKeyInfo DER encoding
+ * @return Imported public key, or SslError on parse failure
+ * @note Primary implementation; ImportPublicKeyDer is a thin throwing wrapper.
  */
-inline SslEvpKey ImportPublicKeyDer(std::span<const std::uint8_t> der)
+[[nodiscard]] inline SslExpected<SslEvpKey> TryImportPublicKeyDer(std::span<const std::uint8_t> der)
 {
     const std::uint8_t *p = der.data();
     EVP_PKEY *pkey = d2i_PUBKEY(nullptr, &p, static_cast<long>(der.size()));
     if (!pkey)
-        throw SslException("d2i_PUBKEY failed");
+        return std::unexpected(SslError::capture("d2i_PUBKEY failed"));
     return SslEvpKey(pkey);
+}
+
+/**
+ * @brief Import an SPKI DER blob as an @c SslEvpKey (public key only).
+ * @param der SubjectPublicKeyInfo DER encoding
+ * @return Imported public key
+ * @throws SslException on parse failure
+ */
+inline SslEvpKey ImportPublicKeyDer(std::span<const std::uint8_t> der)
+{
+    if (auto r = TryImportPublicKeyDer(der); r.has_value())
+        return *std::move(r);
+    else
+        throw SslException(std::move(r.error()));
 }
 
 /**
@@ -114,58 +150,120 @@ inline SslEvpKey ImportPublicKeyDer(std::span<const std::uint8_t> der)
     return digest;
 }
 
-inline void ConfigureRsaOaepSha256(EVP_PKEY_CTX *ctx)
+/**
+ * @brief Configure an @c EVP_PKEY_CTX for RSA-OAEP with SHA-256 (non-throwing).
+ * @param ctx Context already associated with an RSA key
+ * @return Empty success, or SslError if padding / OAEP MD / MGF1 MD setup fails
+ * @note Sets PKCS#1 OAEP padding, OAEP MD = SHA-256, MGF1 MD = SHA-256.
+ */
+inline SslExpected<void> TryConfigureRsaOaepSha256(EVP_PKEY_CTX *ctx)
 {
     if (EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_OAEP_PADDING) <= 0)
-        throw SslException("EVP_PKEY_CTX_set_rsa_padding failed");
+        return std::unexpected(SslError::capture("EVP_PKEY_CTX_set_rsa_padding failed"));
     if (EVP_PKEY_CTX_set_rsa_oaep_md(ctx, EVP_sha256()) <= 0)
-        throw SslException("EVP_PKEY_CTX_set_rsa_oaep_md failed");
+        return std::unexpected(SslError::capture("EVP_PKEY_CTX_set_rsa_oaep_md failed"));
     if (EVP_PKEY_CTX_set_rsa_mgf1_md(ctx, EVP_sha256()) <= 0)
-        throw SslException("EVP_PKEY_CTX_set_rsa_mgf1_md failed");
+        return std::unexpected(SslError::capture("EVP_PKEY_CTX_set_rsa_mgf1_md failed"));
+    return {};
 }
 
 /**
- * @brief RSA-OAEP-SHA256 encrypt (typically used for small key material).
+ * @brief Configure an @c EVP_PKEY_CTX for RSA-OAEP with SHA-256.
+ * @param ctx Context already associated with an RSA key
+ * @throws SslException if padding / OAEP MD / MGF1 MD setup fails
  */
-inline std::vector<std::uint8_t> RsaOaepSha256Encrypt(const SslEvpKey &public_key,
-                                                      std::span<const std::uint8_t> plaintext)
+inline void ConfigureRsaOaepSha256(EVP_PKEY_CTX *ctx)
+{
+    if (auto r = TryConfigureRsaOaepSha256(ctx); r.has_value())
+        return;
+    else
+        throw SslException(std::move(r.error()));
+}
+
+/**
+ * @brief RSA-OAEP-SHA256 encrypt (non-throwing).
+ * @param public_key Recipient RSA public key
+ * @param plaintext Small plaintext (typically key material)
+ * @return Ciphertext, or SslError on failure
+ * @note Primary implementation; RsaOaepSha256Encrypt is a thin throwing wrapper.
+ */
+[[nodiscard]] inline SslExpected<std::vector<std::uint8_t>>
+TryRsaOaepSha256Encrypt(const SslEvpKey &public_key, std::span<const std::uint8_t> plaintext)
 {
     auto ctx = SslEvpPkeyCtx(EVP_PKEY_CTX_new(const_cast<EVP_PKEY *>(public_key.Get()), nullptr));
     if (EVP_PKEY_encrypt_init(ctx) <= 0)
-        throw SslException("EVP_PKEY_encrypt_init failed");
-    ConfigureRsaOaepSha256(ctx);
+        return std::unexpected(SslError::capture("EVP_PKEY_encrypt_init failed"));
+    if (auto cfg = TryConfigureRsaOaepSha256(ctx); !cfg)
+        return std::unexpected(std::move(cfg.error()));
 
     std::size_t outlen = 0;
     if (EVP_PKEY_encrypt(ctx, nullptr, &outlen, plaintext.data(), plaintext.size()) <= 0)
-        throw SslException("EVP_PKEY_encrypt size query failed");
+        return std::unexpected(SslError::capture("EVP_PKEY_encrypt size query failed"));
 
     std::vector<std::uint8_t> ciphertext(outlen);
     if (EVP_PKEY_encrypt(ctx, ciphertext.data(), &outlen, plaintext.data(), plaintext.size()) <= 0)
-        throw SslException("EVP_PKEY_encrypt failed");
+        return std::unexpected(SslError::capture("EVP_PKEY_encrypt failed"));
     ciphertext.resize(outlen);
     return ciphertext;
 }
 
 /**
+ * @brief RSA-OAEP-SHA256 encrypt (typically used for small key material).
+ * @param public_key Recipient RSA public key
+ * @param plaintext Small plaintext (typically key material)
+ * @return Ciphertext
+ * @throws SslException on failure
+ */
+inline std::vector<std::uint8_t> RsaOaepSha256Encrypt(const SslEvpKey &public_key,
+                                                      std::span<const std::uint8_t> plaintext)
+{
+    if (auto r = TryRsaOaepSha256Encrypt(public_key, plaintext); r.has_value())
+        return *std::move(r);
+    else
+        throw SslException(std::move(r.error()));
+}
+
+/**
+ * @brief RSA-OAEP-SHA256 decrypt (non-throwing).
+ * @param private_key Recipient RSA private key
+ * @param ciphertext OAEP ciphertext from @c TryRsaOaepSha256Encrypt / @c RsaOaepSha256Encrypt
+ * @return Plaintext, or SslError on failure (including wrong key / corrupt ciphertext)
+ * @note Primary implementation; RsaOaepSha256Decrypt is a thin throwing wrapper.
+ */
+[[nodiscard]] inline SslExpected<std::vector<std::uint8_t>>
+TryRsaOaepSha256Decrypt(const SslEvpKey &private_key, std::span<const std::uint8_t> ciphertext)
+{
+    auto ctx = SslEvpPkeyCtx(EVP_PKEY_CTX_new(const_cast<EVP_PKEY *>(private_key.Get()), nullptr));
+    if (EVP_PKEY_decrypt_init(ctx) <= 0)
+        return std::unexpected(SslError::capture("EVP_PKEY_decrypt_init failed"));
+    if (auto cfg = TryConfigureRsaOaepSha256(ctx); !cfg)
+        return std::unexpected(std::move(cfg.error()));
+
+    std::size_t outlen = 0;
+    if (EVP_PKEY_decrypt(ctx, nullptr, &outlen, ciphertext.data(), ciphertext.size()) <= 0)
+        return std::unexpected(SslError::capture("EVP_PKEY_decrypt size query failed"));
+
+    std::vector<std::uint8_t> plaintext(outlen);
+    if (EVP_PKEY_decrypt(ctx, plaintext.data(), &outlen, ciphertext.data(), ciphertext.size()) <= 0)
+        return std::unexpected(SslError::capture("EVP_PKEY_decrypt failed"));
+    plaintext.resize(outlen);
+    return plaintext;
+}
+
+/**
  * @brief RSA-OAEP-SHA256 decrypt.
+ * @param private_key Recipient RSA private key
+ * @param ciphertext OAEP ciphertext from @c RsaOaepSha256Encrypt
+ * @return Plaintext
+ * @throws SslException on failure (including wrong key / corrupt ciphertext)
  */
 inline std::vector<std::uint8_t> RsaOaepSha256Decrypt(const SslEvpKey &private_key,
                                                       std::span<const std::uint8_t> ciphertext)
 {
-    auto ctx = SslEvpPkeyCtx(EVP_PKEY_CTX_new(const_cast<EVP_PKEY *>(private_key.Get()), nullptr));
-    if (EVP_PKEY_decrypt_init(ctx) <= 0)
-        throw SslException("EVP_PKEY_decrypt_init failed");
-    ConfigureRsaOaepSha256(ctx);
-
-    std::size_t outlen = 0;
-    if (EVP_PKEY_decrypt(ctx, nullptr, &outlen, ciphertext.data(), ciphertext.size()) <= 0)
-        throw SslException("EVP_PKEY_decrypt size query failed");
-
-    std::vector<std::uint8_t> plaintext(outlen);
-    if (EVP_PKEY_decrypt(ctx, plaintext.data(), &outlen, ciphertext.data(), ciphertext.size()) <= 0)
-        throw SslException("EVP_PKEY_decrypt failed");
-    plaintext.resize(outlen);
-    return plaintext;
+    if (auto r = TryRsaOaepSha256Decrypt(private_key, ciphertext); r.has_value())
+        return *std::move(r);
+    else
+        throw SslException(std::move(r.error()));
 }
 
 /**
@@ -176,11 +274,11 @@ inline SslEvpKey GenerateEphemeralEcP256()
     auto ctx = SslEvpPkeyCtx(EVP_PKEY_CTX_new_id(EVP_PKEY_EC, nullptr));
     if (EVP_PKEY_keygen_init(ctx) <= 0
         || EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx, NID_X9_62_prime256v1) <= 0)
-        throw SslException("EC P-256 keygen init failed");
+        ThrowSsl("EC P-256 keygen init failed");
 
     EVP_PKEY *pkey = nullptr;
     if (EVP_PKEY_keygen(ctx, &pkey) <= 0)
-        throw SslException("EC P-256 keygen failed");
+        ThrowSsl("EC P-256 keygen failed");
     return SslEvpKey(pkey);
 }
 
@@ -195,17 +293,17 @@ template <std::size_t OutLength>
 {
     auto ctx = SslEvpPkeyCtx(EVP_PKEY_CTX_new(const_cast<EVP_PKEY *>(private_key.Get()), nullptr));
     if (EVP_PKEY_derive_init(ctx) <= 0)
-        throw SslException("EVP_PKEY_derive_init failed");
+        ThrowSsl("EVP_PKEY_derive_init failed");
     if (EVP_PKEY_derive_set_peer(ctx, const_cast<EVP_PKEY *>(peer_public_key.Get())) <= 0)
-        throw SslException("EVP_PKEY_derive_set_peer failed");
+        ThrowSsl("EVP_PKEY_derive_set_peer failed");
 
     std::size_t secret_len = 0;
     if (EVP_PKEY_derive(ctx, nullptr, &secret_len) <= 0)
-        throw SslException("EVP_PKEY_derive size query failed");
+        ThrowSsl("EVP_PKEY_derive size query failed");
 
     std::vector<std::uint8_t> secret(secret_len);
     if (EVP_PKEY_derive(ctx, secret.data(), &secret_len) <= 0)
-        throw SslException("EVP_PKEY_derive failed");
+        ThrowSsl("EVP_PKEY_derive failed");
     secret.resize(secret_len);
 
     const SslEvpPkeyCtx::Salt empty_salt{};
@@ -225,11 +323,11 @@ inline void ConfigureRsaPssSha256(EVP_MD_CTX *ctx)
 {
     EVP_PKEY_CTX *pctx = EVP_MD_CTX_get_pkey_ctx(ctx);
     if (!pctx)
-        throw SslException("EVP_MD_CTX_get_pkey_ctx failed");
+        ThrowSsl("EVP_MD_CTX_get_pkey_ctx failed");
     if (EVP_PKEY_CTX_set_rsa_padding(pctx, RSA_PKCS1_PSS_PADDING) != 1)
-        throw SslException("EVP_PKEY_CTX_set_rsa_padding failed");
+        ThrowSsl("EVP_PKEY_CTX_set_rsa_padding failed");
     if (EVP_PKEY_CTX_set_rsa_pss_saltlen(pctx, RSA_PSS_SALTLEN_DIGEST) != 1)
-        throw SslException("EVP_PKEY_CTX_set_rsa_pss_saltlen failed");
+        ThrowSsl("EVP_PKEY_CTX_set_rsa_pss_saltlen failed");
 }
 
 /**
@@ -240,17 +338,17 @@ inline std::vector<std::uint8_t> DigestSignSha256(const SslEvpKey &private_key,
 {
     auto ctx = SslEvpMdCtx();
     if (EVP_DigestSignInit(ctx, nullptr, EVP_sha256(), nullptr, const_cast<EVP_PKEY *>(private_key.Get())) != 1)
-        throw SslException("EVP_DigestSignInit failed");
+        ThrowSsl("EVP_DigestSignInit failed");
     if (private_key.BaseId() == EVP_PKEY_RSA)
         ConfigureRsaPssSha256(ctx);
 
     std::size_t siglen = 0;
     if (EVP_DigestSign(ctx, nullptr, &siglen, message.data(), message.size()) != 1)
-        throw SslException("EVP_DigestSign size query failed");
+        ThrowSsl("EVP_DigestSign size query failed");
 
     std::vector<std::uint8_t> signature(siglen);
     if (EVP_DigestSign(ctx, signature.data(), &siglen, message.data(), message.size()) != 1)
-        throw SslException("EVP_DigestSign failed");
+        ThrowSsl("EVP_DigestSign failed");
     signature.resize(siglen);
     return signature;
 }

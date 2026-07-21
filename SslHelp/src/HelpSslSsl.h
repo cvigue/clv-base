@@ -48,7 +48,7 @@ struct SslSsl : SslWithRc<SSL, SSL_new, SSL_free, SSL_up_ref>
     void SetTransportParameters(std::span<const std::uint8_t> params)
     {
         if (SSL_set_quic_transport_params(Get(), params.data(), params.size()) != 1)
-            throw SslException("SSL_set_quic_transport_params failed");
+            ThrowSsl("SSL_set_quic_transport_params failed");
     }
 
     /**
@@ -58,7 +58,7 @@ struct SslSsl : SslWithRc<SSL, SSL_new, SSL_free, SSL_up_ref>
     void SetQuicMethod(const SSL_QUIC_METHOD *method)
     {
         if (SSL_set_quic_method(Get(), method) != 1)
-            throw SslException("SSL_set_quic_method failed");
+            ThrowSsl("SSL_set_quic_method failed");
     }
 
     /**
@@ -95,7 +95,7 @@ struct SslSsl : SslWithRc<SSL, SSL_new, SSL_free, SSL_up_ref>
     void SetExData(int idx, void *data)
     {
         if (SSL_set_ex_data(Get(), idx, data) != 1)
-            throw SslException("SSL_set_ex_data failed");
+            ThrowSsl("SSL_set_ex_data failed");
     }
 
     /**
@@ -138,7 +138,7 @@ struct SslSsl : SslWithRc<SSL, SSL_new, SSL_free, SSL_up_ref>
     void SetTlsSni(std::string_view sni)
     {
         if (SSL_set_tlsext_host_name(Get(), std::string(sni).c_str()) != 1)
-            throw SslException("SSL_set_tlsext_host_name failed");
+            ThrowSsl("SSL_set_tlsext_host_name failed");
     }
 
     /**

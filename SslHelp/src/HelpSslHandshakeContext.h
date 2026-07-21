@@ -62,9 +62,6 @@ class SslHandshakeContext
     /** @brief Silently drain OpenSSL error queue (non-fatal paths) */
     void DiscardErrors();
 
-    /** @brief Drain OpenSSL error queue and throw SslException (fatal paths) */
-    [[noreturn]] void ThrowSslErrors(std::string_view context);
-
   public:
     /**
      * @brief Create a handshake context
@@ -120,7 +117,7 @@ class SslHandshakeContext
             if (written < 0)
             {
                 lastError_ = SSL_ERROR_SYSCALL;
-                ThrowSslErrors("BIO write failed");
+                ThrowSsl("BIO write failed");
             }
         }
 
@@ -273,7 +270,7 @@ class SslHandshakeContext
         {
             lastError_ = ssl_.GetError(written);
             if (lastError_ != SSL_ERROR_WANT_WRITE)
-                ThrowSslErrors("SSL_write failed");
+                ThrowSsl("SSL_write failed");
             return -1;
         }
         return written;
@@ -304,7 +301,7 @@ class SslHandshakeContext
             {
                 lastError_ = ssl_.GetError(read);
                 if (lastError_ != SSL_ERROR_WANT_READ)
-                    ThrowSslErrors("SSL_read failed");
+                    ThrowSsl("SSL_read failed");
                 break;
             }
         }
@@ -375,7 +372,7 @@ inline SslHandshakeContext::Result SslHandshakeContext::AdvanceHandshake()
         }
 
         // Fatal error
-        ThrowSslErrors("TLS handshake failed");
+        ThrowSsl("TLS handshake failed");
     }
 
     // Handshake produced output
@@ -388,23 +385,6 @@ inline void SslHandshakeContext::DiscardErrors()
     while (ERR_get_error() != 0)
     {
     }
-}
-
-inline void SslHandshakeContext::ThrowSslErrors(std::string_view context)
-{
-    std::string detail;
-    char buf[256];
-    unsigned long err;
-    while ((err = ERR_get_error()) != 0)
-    {
-        ERR_error_string_n(err, buf, sizeof(buf));
-        if (!detail.empty())
-            detail += "; ";
-        detail += buf;
-    }
-    if (detail.empty())
-        throw SslException(std::string(context));
-    throw SslException(std::string(context) + ": " + detail);
 }
 
 } // namespace clv::OpenSSL

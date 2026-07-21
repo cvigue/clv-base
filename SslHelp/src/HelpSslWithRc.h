@@ -122,7 +122,7 @@ OpenSslT *SslWithRc<OpenSslT, SslAlloc, SslFree, SslIncCount>::SslIncRef(OpenSsl
         return nullptr;
 
     if (SslIncCount(ptr) != 1)
-        throw SslException("SslIncCount(OpenSslT *) failed");
+        ThrowSsl("SslIncCount(OpenSslT *) failed");
 
     return ptr;
 }
@@ -320,8 +320,8 @@ template <typename OpenSslT, auto SslAlloc, void (*SslFree)(OpenSslT *), int (*S
 void SslWithRc<OpenSslT, SslAlloc, SslFree, SslIncCount>::ThrowIfNull(std::string_view msg) const
 {
     if (!mSslPtr)
-        throw SslException(std::string("SslWithRc::ThrowIfNull() mSslPtr == null")
-                           + (msg.empty() ? "" : ": " + std::string(msg)));
+        ThrowSslApp(std::string("SslWithRc::ThrowIfNull() mSslPtr == null")
+                    + (msg.empty() ? "" : ": " + std::string(msg)));
 }
 /**
     @brief Gets a pointer to the managed instance with no validity checking

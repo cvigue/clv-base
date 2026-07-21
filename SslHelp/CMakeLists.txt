@@ -45,6 +45,7 @@ if(BUILD_TESTING)
         tests/HelpSslCustomBio_tests.cpp
         tests/HelpSslEvpPkeyCtx_tests.cpp
         tests/HelpSslEvpPkey_tests.cpp
+        tests/HelpSslException_tests.cpp
         tests/HelpSslHandshakeContext_tests.cpp
         tests/HelpSslHmac_tests.cpp
         tests/HelpSslMemBio_tests.cpp

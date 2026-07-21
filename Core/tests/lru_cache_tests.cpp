@@ -1,6 +1,5 @@
 // Copyright (c) 2023- Charlie Vigue. All rights reserved.
 
-#include <bits/basic_string.h>
 #include <gtest/gtest.h>
 
 #include <array>

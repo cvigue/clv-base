@@ -105,7 +105,7 @@ class SslNoRcCopy : public SslNoRc<OpenSslT, SslAlloc, SslFree>
     {
         OpenSslT *dup = ClonerT::Clone(this->Get());
         if (!dup)
-            throw SslException("Clone failed");
+            ThrowSsl("Clone failed");
         return DerivedT(dup);
     }
 };

@@ -79,7 +79,7 @@ struct SslX509Stack : SslNoRc<STACK_OF(X509), &CreateX509Stack, &FreeX509Stack>
     void Push(X509 *cert)
     {
         if (!sk_X509_push(Raw(), cert))
-            throw SslException("sk_X509_push failed");
+            ThrowSsl("sk_X509_push failed");
     }
 };
 

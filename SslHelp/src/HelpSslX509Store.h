@@ -61,7 +61,7 @@ struct SslX509Store : SslWithRc<X509_STORE, &X509_STORE_new, &X509_STORE_free, &
         {
             const unsigned long err = ERR_peek_last_error();
             if (ERR_GET_REASON(err) != X509_R_CERT_ALREADY_IN_HASH_TABLE)
-                throw SslException("X509_STORE_add_cert failed");
+                ThrowSsl("X509_STORE_add_cert failed");
             ERR_clear_error();
         }
     }
@@ -73,11 +73,11 @@ struct SslX509Store : SslWithRc<X509_STORE, &X509_STORE_new, &X509_STORE_free, &
     void AddCertsFromPem(std::string_view pem)
     {
         if (pem.empty())
-            throw SslException("AddCertsFromPem: PEM is empty");
+            ThrowSslApp("AddCertsFromPem: PEM is empty");
 
         BIO *bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
         if (bio == nullptr)
-            throw SslException("BIO_new_mem_buf failed");
+            ThrowSsl("BIO_new_mem_buf failed");
 
         int loaded = 0;
         while (true)
@@ -95,7 +95,7 @@ struct SslX509Store : SslWithRc<X509_STORE, &X509_STORE_new, &X509_STORE_free, &
         BIO_free(bio);
 
         if (loaded == 0)
-            throw SslException("AddCertsFromPem: no certificates parsed");
+            ThrowSslApp("AddCertsFromPem: no certificates parsed");
     }
 
     /**
@@ -104,11 +104,11 @@ struct SslX509Store : SslWithRc<X509_STORE, &X509_STORE_new, &X509_STORE_free, &
     void LoadCertsFromFile(const std::filesystem::path &ca_file)
     {
         if (!std::filesystem::exists(ca_file))
-            throw SslException("CA file not found: " + ca_file.string());
+            ThrowSslApp("CA file not found: " + ca_file.string());
 
         std::unique_ptr<FILE, decltype(&FileDeleter)> fp(fopen(ca_file.string().c_str(), "r"), &FileDeleter);
         if (!fp)
-            throw SslException("Failed to open CA file: " + ca_file.string());
+            ThrowSslApp("Failed to open CA file: " + ca_file.string());
 
         int loaded = 0;
         while (true)
@@ -125,25 +125,25 @@ struct SslX509Store : SslWithRc<X509_STORE, &X509_STORE_new, &X509_STORE_free, &
         }
 
         if (loaded == 0)
-            throw SslException("No valid CA certificates found in file");
+            ThrowSslApp("No valid CA certificates found in file");
     }
 
     void LoadDirectory(const std::filesystem::path &ca_dir)
     {
         if (X509_STORE_load_locations(Get(), nullptr, ca_dir.string().c_str()) != 1)
-            throw SslException("X509_STORE_load_locations failed for directory");
+            ThrowSsl("X509_STORE_load_locations failed for directory");
     }
 
     void SetDefaultPaths()
     {
         if (X509_STORE_set_default_paths(Get()) != 1)
-            throw SslException("X509_STORE_set_default_paths failed");
+            ThrowSsl("X509_STORE_set_default_paths failed");
     }
 
     void AddCrl(const SslX509Crl &crl)
     {
         if (X509_STORE_add_crl(Get(), const_cast<X509_CRL *>(crl.Get())) != 1)
-            throw SslException("X509_STORE_add_crl failed");
+            ThrowSsl("X509_STORE_add_crl failed");
     }
 
     /**
@@ -152,11 +152,11 @@ struct SslX509Store : SslWithRc<X509_STORE, &X509_STORE_new, &X509_STORE_free, &
     void AddCrlsFromPem(std::string_view pem)
     {
         if (pem.empty())
-            throw SslException("AddCrlsFromPem: PEM is empty");
+            ThrowSslApp("AddCrlsFromPem: PEM is empty");
 
         BIO *bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
         if (bio == nullptr)
-            throw SslException("BIO_new_mem_buf failed");
+            ThrowSsl("BIO_new_mem_buf failed");
 
         int loaded = 0;
         while (true)
@@ -171,7 +171,7 @@ struct SslX509Store : SslWithRc<X509_STORE, &X509_STORE_new, &X509_STORE_free, &
             {
                 X509_CRL_free(crl);
                 BIO_free(bio);
-                throw SslException("X509_STORE_add_crl failed");
+                ThrowSsl("X509_STORE_add_crl failed");
             }
             X509_CRL_free(crl);
             ++loaded;
@@ -179,7 +179,7 @@ struct SslX509Store : SslWithRc<X509_STORE, &X509_STORE_new, &X509_STORE_free, &
         BIO_free(bio);
 
         if (loaded == 0)
-            throw SslException("AddCrlsFromPem: no CRLs parsed");
+            ThrowSslApp("AddCrlsFromPem: no CRLs parsed");
 
         SetFlags(X509_V_FLAG_CRL_CHECK);
     }

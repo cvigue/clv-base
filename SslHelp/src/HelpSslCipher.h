@@ -10,9 +10,11 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <expected>
 #include <openssl/types.h>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 #include <cstdint>
 #include <openssl/evp.h>
@@ -257,8 +259,59 @@ struct SslCipherCtx : SslNoRcCopy<SslCipherCtx, EVP_CIPHER_CTX,
     bool FinalizeDecryptCheck(std::span<const std::uint8_t, AEAD_TAG_LENGTH> tag);
 
     // ========================================================================================
+    // Pre-keyed packet helpers (nonce-only refresh; keep key schedule cached)
+    // ========================================================================================
+
+    /**
+     * @brief Encrypt one packet in-place on an already-keyed context (non-throwing)
+     * @param nonce Per-packet nonce/IV (must be unique per message)
+     * @param data Buffer encrypted in-place (ciphertext overwrites plaintext)
+     * @param aad Additional authenticated data
+     * @return 16-byte authentication tag, or SslError on failure
+     * @note Call after InitAeadEncrypt + SetEncryptKeyAndNonce. Does not re-set the key.
+     * @note Packet-boundary recovery for the persistent-ctx hot path (no Try* on each Update*).
+     */
+    [[nodiscard]] SslExpected<std::array<std::uint8_t, AEAD_TAG_LENGTH>>
+    TryEncryptInPlace(std::span<const std::uint8_t> nonce,
+                      std::span<std::uint8_t> data,
+                      std::span<const std::uint8_t> aad);
+
+    /**
+     * @brief Decrypt one packet in-place on an already-keyed context (non-throwing)
+     * @param nonce Per-packet nonce/IV
+     * @param data Buffer decrypted in-place (plaintext overwrites ciphertext)
+     * @param tag Authentication tag to verify
+     * @param aad Additional authenticated data
+     * @return Empty success, or SslError on failure
+     * @note Call after InitAeadDecrypt + SetDecryptKeyAndNonce. Does not re-set the key.
+     * @note Tag mismatch yields SslErrorKind::AuthTag; other OpenSSL failures use capture().
+     */
+    [[nodiscard]] SslExpected<void>
+    TryDecryptInPlace(std::span<const std::uint8_t> nonce,
+                      std::span<std::uint8_t> data,
+                      std::span<const std::uint8_t, AEAD_TAG_LENGTH> tag,
+                      std::span<const std::uint8_t> aad);
+
+    // ========================================================================================
     // One-shot AEAD methods (convenience wrappers that reinitialize the context)
     // ========================================================================================
+
+    /**
+     * @brief One-shot AEAD encryption using this context (non-throwing)
+     * @param traits Cipher traits specifying the algorithm
+     * @param key Encryption key (length depends on cipher)
+     * @param nonce 12-byte nonce/IV (must be unique per message)
+     * @param plaintext Data to encrypt
+     * @param aad Additional authenticated data
+     * @return Ciphertext with 16-byte authentication tag appended, or SslError on failure
+     * @note Primary implementation; EncryptAead is a thin throwing wrapper.
+     */
+    [[nodiscard]] SslExpected<std::vector<std::uint8_t>>
+    TryEncryptAead(const AeadCipherTraits &traits,
+                   std::span<const std::uint8_t> key,
+                   std::span<const std::uint8_t> nonce,
+                   std::span<const std::uint8_t> plaintext,
+                   std::span<const std::uint8_t> aad);
 
     /**
      * @brief One-shot AEAD encryption using this context
@@ -278,6 +331,24 @@ struct SslCipherCtx : SslNoRcCopy<SslCipherCtx, EVP_CIPHER_CTX,
                 std::span<const std::uint8_t> aad);
 
     /**
+     * @brief One-shot AEAD decryption using this context (non-throwing)
+     * @param traits Cipher traits specifying the algorithm
+     * @param key Decryption key (length depends on cipher)
+     * @param nonce 12-byte nonce/IV
+     * @param ciphertext Data to decrypt (includes 16-byte tag)
+     * @param aad Additional authenticated data (must match encryption)
+     * @return Plaintext data, or SslError on authentication failure or decryption error
+     * @note Primary implementation; DecryptAead is a thin throwing wrapper.
+     * @note Tag mismatch yields SslErrorKind::AuthTag.
+     */
+    [[nodiscard]] SslExpected<std::vector<std::uint8_t>>
+    TryDecryptAead(const AeadCipherTraits &traits,
+                   std::span<const std::uint8_t> key,
+                   std::span<const std::uint8_t> nonce,
+                   std::span<const std::uint8_t> ciphertext,
+                   std::span<const std::uint8_t> aad);
+
+    /**
      * @brief One-shot AEAD decryption using this context
      * @param traits Cipher traits specifying the algorithm
      * @param key Decryption key (length depends on cipher)
@@ -293,6 +364,24 @@ struct SslCipherCtx : SslNoRcCopy<SslCipherCtx, EVP_CIPHER_CTX,
                 std::span<const std::uint8_t> nonce,
                 std::span<const std::uint8_t> ciphertext,
                 std::span<const std::uint8_t> aad);
+
+    /**
+     * @brief Encrypt data in-place with AEAD, returning only the tag (non-throwing)
+     * @param traits Cipher traits specifying the algorithm
+     * @param key Encryption key
+     * @param nonce 12-byte nonce/IV (must be unique per message)
+     * @param data Data buffer to encrypt in-place (ciphertext overwrites plaintext)
+     * @param aad Additional authenticated data
+     * @return 16-byte authentication tag, or SslError on failure
+     * @note Zero heap allocations on success. Caller manages the buffer.
+     * @note Primary implementation; EncryptAeadInPlace is a thin throwing wrapper.
+     */
+    [[nodiscard]] SslExpected<std::array<std::uint8_t, AEAD_TAG_LENGTH>>
+    TryEncryptAeadInPlace(const AeadCipherTraits &traits,
+                          std::span<const std::uint8_t> key,
+                          std::span<const std::uint8_t> nonce,
+                          std::span<std::uint8_t> data,
+                          std::span<const std::uint8_t> aad);
 
     /**
      * @brief Encrypt data in-place with AEAD, returning only the tag
@@ -340,6 +429,24 @@ struct SslCipherCtx : SslNoRcCopy<SslCipherCtx, EVP_CIPHER_CTX,
 // ================================================================================================
 
 /**
+ * @brief One-shot AEAD encryption (non-throwing)
+ * @param traits Cipher traits specifying the algorithm (AES_128_GCM_TRAITS, etc.)
+ * @param key Encryption key (length depends on cipher)
+ * @param nonce 12-byte nonce/IV
+ * @param plaintext Data to encrypt
+ * @param aad Additional authenticated data
+ * @return Ciphertext with 16-byte authentication tag appended, or SslError on failure
+ * @note Example: TryEncryptAead(AES_256_GCM_TRAITS, key32, nonce, plaintext, aad)
+ * @note Primary implementation; EncryptAead is a thin throwing wrapper.
+ */
+[[nodiscard]] SslExpected<std::vector<std::uint8_t>>
+TryEncryptAead(const AeadCipherTraits &traits,
+               std::span<const std::uint8_t> key,
+               std::span<const std::uint8_t> nonce,
+               std::span<const std::uint8_t> plaintext,
+               std::span<const std::uint8_t> aad);
+
+/**
  * @brief One-shot AEAD encryption
  * @param traits Cipher traits specifying the algorithm (AES_128_GCM_TRAITS, etc.)
  * @param key Encryption key (length depends on cipher)
@@ -358,6 +465,25 @@ EncryptAead(const AeadCipherTraits &traits,
             std::span<const std::uint8_t> aad);
 
 /**
+ * @brief One-shot AEAD decryption (non-throwing)
+ * @param traits Cipher traits specifying the algorithm (AES_128_GCM_TRAITS, etc.)
+ * @param key Decryption key (length depends on cipher)
+ * @param nonce 12-byte nonce/IV
+ * @param ciphertext Data to decrypt (includes 16-byte tag)
+ * @param aad Additional authenticated data (must match encryption)
+ * @return Plaintext data, or SslError on authentication failure or decryption error
+ * @note Example: TryDecryptAead(AES_256_GCM_TRAITS, key32, nonce, ciphertext, aad)
+ * @note Primary implementation; DecryptAead is a thin throwing wrapper.
+ * @note Tag mismatch yields SslErrorKind::AuthTag.
+ */
+[[nodiscard]] SslExpected<std::vector<std::uint8_t>>
+TryDecryptAead(const AeadCipherTraits &traits,
+               std::span<const std::uint8_t> key,
+               std::span<const std::uint8_t> nonce,
+               std::span<const std::uint8_t> ciphertext,
+               std::span<const std::uint8_t> aad);
+
+/**
  * @brief One-shot AEAD decryption
  * @param traits Cipher traits specifying the algorithm (AES_128_GCM_TRAITS, etc.)
  * @param key Decryption key (length depends on cipher)
@@ -374,6 +500,23 @@ DecryptAead(const AeadCipherTraits &traits,
             std::span<const std::uint8_t> nonce,
             std::span<const std::uint8_t> ciphertext,
             std::span<const std::uint8_t> aad);
+
+/**
+ * @brief One-shot in-place AEAD encryption (non-throwing)
+ * @param traits Cipher traits specifying the algorithm (AES_128_GCM_TRAITS, etc.)
+ * @param key Encryption key
+ * @param nonce 12-byte nonce/IV (must be unique per message)
+ * @param data Data buffer to encrypt in-place
+ * @param aad Additional authenticated data
+ * @return 16-byte authentication tag, or SslError on failure
+ * @note Primary implementation; EncryptAeadInPlace is a thin throwing wrapper.
+ */
+[[nodiscard]] SslExpected<std::array<std::uint8_t, AEAD_TAG_LENGTH>>
+TryEncryptAeadInPlace(const AeadCipherTraits &traits,
+                      std::span<const std::uint8_t> key,
+                      std::span<const std::uint8_t> nonce,
+                      std::span<std::uint8_t> data,
+                      std::span<const std::uint8_t> aad);
 
 /**
  * @brief One-shot in-place AEAD encryption (zero-copy)
@@ -501,7 +644,7 @@ inline void SslCipherCtx::InitEncrypt(const AeadCipherTraits &traits,
                                       const unsigned char *iv)
 {
     if (EVP_EncryptInit_ex(*this, traits.cipher_fn(), engine, key, iv) != 1)
-        throw SslException(std::string(traits.name) + " encrypt init failed");
+        ThrowSsl(std::string(traits.name) + " encrypt init failed");
 }
 
 inline void SslCipherCtx::InitDecrypt(const AeadCipherTraits &traits,
@@ -510,13 +653,13 @@ inline void SslCipherCtx::InitDecrypt(const AeadCipherTraits &traits,
                                       const unsigned char *iv)
 {
     if (EVP_DecryptInit_ex(*this, traits.cipher_fn(), engine, key, iv) != 1)
-        throw SslException(std::string(traits.name) + " decrypt init failed");
+        ThrowSsl(std::string(traits.name) + " decrypt init failed");
 }
 
 inline void SslCipherCtx::SetIvLength(int ivLen)
 {
     if (EVP_CIPHER_CTX_ctrl(*this, EVP_CTRL_AEAD_SET_IVLEN, ivLen, nullptr) != 1)
-        throw SslException(std::string(CipherName()) + " IV length setup failed");
+        ThrowSsl(std::string(CipherName()) + " IV length setup failed");
 }
 
 // High-level AEAD methods
@@ -538,7 +681,7 @@ inline void SslCipherCtx::SetEncryptKeyAndNonce(std::span<const std::uint8_t> ke
 {
     // Set key and nonce for encryption (cipher already set by InitAeadEncrypt)
     if (EVP_EncryptInit_ex(*this, nullptr, nullptr, key.data(), nonce.data()) != 1)
-        throw SslException(std::string(CipherName()) + " key/nonce setup failed");
+        ThrowSsl(std::string(CipherName()) + " key/nonce setup failed");
 }
 
 inline void SslCipherCtx::SetDecryptKeyAndNonce(std::span<const std::uint8_t> key,
@@ -546,7 +689,7 @@ inline void SslCipherCtx::SetDecryptKeyAndNonce(std::span<const std::uint8_t> ke
 {
     // Set key and nonce for decryption (cipher already set by InitAeadDecrypt)
     if (EVP_DecryptInit_ex(*this, nullptr, nullptr, key.data(), nonce.data()) != 1)
-        throw SslException(std::string(CipherName()) + " key/nonce setup failed");
+        ThrowSsl(std::string(CipherName()) + " key/nonce setup failed");
 }
 
 inline void SslCipherCtx::SetEncryptNonce(std::span<const std::uint8_t> nonce)
@@ -554,14 +697,14 @@ inline void SslCipherCtx::SetEncryptNonce(std::span<const std::uint8_t> nonce)
     // Pass NULL for cipher & key — reuses the cached key schedule from the initial
     // SetEncryptKeyAndNonce call.  Only the nonce/IV is updated.
     if (EVP_EncryptInit_ex(*this, nullptr, nullptr, nullptr, nonce.data()) != 1)
-        throw SslException("encrypt nonce update failed");
+        ThrowSsl("encrypt nonce update failed");
 }
 
 inline void SslCipherCtx::SetDecryptNonce(std::span<const std::uint8_t> nonce)
 {
     // Pass NULL for cipher & key — reuses the cached key schedule.
     if (EVP_DecryptInit_ex(*this, nullptr, nullptr, nullptr, nonce.data()) != 1)
-        throw SslException("decrypt nonce update failed");
+        ThrowSsl("decrypt nonce update failed");
 }
 
 inline void SslCipherCtx::UpdateEncryptAad(std::span<const std::uint8_t> aad)
@@ -571,7 +714,7 @@ inline void SslCipherCtx::UpdateEncryptAad(std::span<const std::uint8_t> aad)
 
     int outlen = 0;
     if (EVP_EncryptUpdate(*this, nullptr, &outlen, aad.data(), static_cast<int>(aad.size())) != 1)
-        throw SslException(std::string(CipherName()) + " AAD processing failed");
+        ThrowSsl(std::string(CipherName()) + " AAD processing failed");
 }
 
 inline void SslCipherCtx::UpdateDecryptAad(std::span<const std::uint8_t> aad)
@@ -581,7 +724,7 @@ inline void SslCipherCtx::UpdateDecryptAad(std::span<const std::uint8_t> aad)
 
     int outlen = 0;
     if (EVP_DecryptUpdate(*this, nullptr, &outlen, aad.data(), static_cast<int>(aad.size())) != 1)
-        throw SslException(std::string(CipherName()) + " AAD processing failed");
+        ThrowSsl(std::string(CipherName()) + " AAD processing failed");
 }
 
 inline std::vector<std::uint8_t>
@@ -593,7 +736,7 @@ SslCipherCtx::UpdateEncrypt(std::span<const std::uint8_t> plaintext)
     std::vector<std::uint8_t> ciphertext(plaintext.size());
     int outlen = 0;
     if (EVP_EncryptUpdate(*this, ciphertext.data(), &outlen, plaintext.data(), static_cast<int>(plaintext.size())) != 1)
-        throw SslException(std::string(CipherName()) + " encryption failed");
+        ThrowSsl(std::string(CipherName()) + " encryption failed");
 
     ciphertext.resize(outlen);
     return ciphertext;
@@ -607,7 +750,7 @@ inline void SslCipherCtx::UpdateEncryptInPlace(std::span<std::uint8_t> data)
     int outlen = 0;
     // OpenSSL GCM/ChaCha20-Poly1305 support in-place encryption (out == in)
     if (EVP_EncryptUpdate(*this, data.data(), &outlen, data.data(), static_cast<int>(data.size())) != 1)
-        throw SslException(std::string(CipherName()) + " in-place encryption failed");
+        ThrowSsl(std::string(CipherName()) + " in-place encryption failed");
 }
 
 inline std::vector<std::uint8_t> SslCipherCtx::FinalizeEncrypt()
@@ -617,11 +760,11 @@ inline std::vector<std::uint8_t> SslCipherCtx::FinalizeEncrypt()
 
     // Finalize encryption
     if (EVP_EncryptFinal_ex(*this, final_data.data(), &outlen) != 1)
-        throw SslException(std::string(CipherName()) + " finalization failed");
+        ThrowSsl(std::string(CipherName()) + " finalization failed");
 
     // Extract authentication tag
     if (EVP_CIPHER_CTX_ctrl(*this, EVP_CTRL_AEAD_GET_TAG, AEAD_TAG_LENGTH, final_data.data() + outlen) != 1)
-        throw SslException(std::string(CipherName()) + " tag extraction failed");
+        ThrowSsl(std::string(CipherName()) + " tag extraction failed");
 
     final_data.resize(outlen + AEAD_TAG_LENGTH);
     return final_data;
@@ -633,12 +776,12 @@ inline std::array<std::uint8_t, AEAD_TAG_LENGTH> SslCipherCtx::FinalizeEncryptTa
     int outlen = 0;
     std::uint8_t dummy = 0;
     if (EVP_EncryptFinal_ex(*this, &dummy, &outlen) != 1)
-        throw SslException(std::string(CipherName()) + " finalization failed");
+        ThrowSsl(std::string(CipherName()) + " finalization failed");
 
     // Extract authentication tag directly into array (no heap allocation)
     std::array<std::uint8_t, AEAD_TAG_LENGTH> tag;
     if (EVP_CIPHER_CTX_ctrl(*this, EVP_CTRL_AEAD_GET_TAG, AEAD_TAG_LENGTH, tag.data()) != 1)
-        throw SslException(std::string(CipherName()) + " tag extraction failed");
+        ThrowSsl(std::string(CipherName()) + " tag extraction failed");
 
     return tag;
 }
@@ -652,7 +795,7 @@ SslCipherCtx::UpdateDecrypt(std::span<const std::uint8_t> ciphertext)
     std::vector<std::uint8_t> plaintext(ciphertext.size());
     int outlen = 0;
     if (EVP_DecryptUpdate(*this, plaintext.data(), &outlen, ciphertext.data(), static_cast<int>(ciphertext.size())) != 1)
-        throw SslException(std::string(CipherName()) + " decryption failed");
+        ThrowSsl(std::string(CipherName()) + " decryption failed");
 
     plaintext.resize(outlen);
     return plaintext;
@@ -666,7 +809,7 @@ inline void SslCipherCtx::UpdateDecryptInPlace(std::span<std::uint8_t> data)
     int outlen = 0;
     // OpenSSL GCM/ChaCha20-Poly1305 support in-place decryption (out == in)
     if (EVP_DecryptUpdate(*this, data.data(), &outlen, data.data(), static_cast<int>(data.size())) != 1)
-        throw SslException(std::string(CipherName()) + " in-place decryption failed");
+        ThrowSsl(std::string(CipherName()) + " in-place decryption failed");
 }
 
 inline std::vector<std::uint8_t>
@@ -674,14 +817,14 @@ SslCipherCtx::FinalizeDecrypt(std::span<const std::uint8_t, AEAD_TAG_LENGTH> tag
 {
     // Set expected tag value for verification
     if (EVP_CIPHER_CTX_ctrl(*this, EVP_CTRL_AEAD_SET_TAG, tag.size(), const_cast<std::uint8_t *>(tag.data())) != 1)
-        throw SslException(std::string(CipherName()) + " tag setup failed");
+        ThrowSsl(std::string(CipherName()) + " tag setup failed");
 
     std::vector<std::uint8_t> final_data(AEAD_TAG_LENGTH); // Space for any final bytes
     int outlen = 0;
 
     // Finalize and verify tag
     if (EVP_DecryptFinal_ex(*this, final_data.data(), &outlen) != 1)
-        throw SslException(std::string(CipherName()) + " authentication failed (tag mismatch)");
+        throw SslException(SslError::auth_tag(std::string(CipherName()) + " authentication failed (tag mismatch)"));
 
     final_data.resize(outlen);
     return final_data;
@@ -691,7 +834,7 @@ inline bool SslCipherCtx::FinalizeDecryptCheck(std::span<const std::uint8_t, AEA
 {
     // Set expected tag value for verification
     if (EVP_CIPHER_CTX_ctrl(*this, EVP_CTRL_AEAD_SET_TAG, tag.size(), const_cast<std::uint8_t *>(tag.data())) != 1)
-        throw SslException(std::string(CipherName()) + " tag setup failed");
+        ThrowSsl(std::string(CipherName()) + " tag setup failed");
 
     // For GCM/ChaCha20, EVP_DecryptFinal_ex produces 0 final bytes
     int outlen = 0;
@@ -701,9 +844,132 @@ inline bool SslCipherCtx::FinalizeDecryptCheck(std::span<const std::uint8_t, AEA
     return EVP_DecryptFinal_ex(*this, &dummy, &outlen) == 1;
 }
 
+inline SslExpected<std::array<std::uint8_t, AEAD_TAG_LENGTH>>
+SslCipherCtx::TryEncryptInPlace(std::span<const std::uint8_t> nonce,
+                                std::span<std::uint8_t> data,
+                                std::span<const std::uint8_t> aad)
+{
+    // Nonce-only refresh — reuses the cached key schedule from SetEncryptKeyAndNonce.
+    if (EVP_EncryptInit_ex(*this, nullptr, nullptr, nullptr, nonce.data()) != 1)
+        return std::unexpected(SslError::capture("encrypt nonce update failed"));
+
+    if (!aad.empty())
+    {
+        int outlen = 0;
+        if (EVP_EncryptUpdate(*this, nullptr, &outlen, aad.data(), static_cast<int>(aad.size())) != 1)
+            return std::unexpected(SslError::capture(std::string(CipherName()) + " AAD processing failed"));
+    }
+
+    if (!data.empty())
+    {
+        int outlen = 0;
+        if (EVP_EncryptUpdate(*this, data.data(), &outlen, data.data(), static_cast<int>(data.size())) != 1)
+            return std::unexpected(SslError::capture(std::string(CipherName()) + " in-place encryption failed"));
+    }
+
+    int outlen = 0;
+    std::uint8_t dummy = 0;
+    if (EVP_EncryptFinal_ex(*this, &dummy, &outlen) != 1)
+        return std::unexpected(SslError::capture(std::string(CipherName()) + " finalization failed"));
+
+    std::array<std::uint8_t, AEAD_TAG_LENGTH> tag{};
+    if (EVP_CIPHER_CTX_ctrl(*this, EVP_CTRL_AEAD_GET_TAG, AEAD_TAG_LENGTH, tag.data()) != 1)
+        return std::unexpected(SslError::capture(std::string(CipherName()) + " tag extraction failed"));
+
+    return tag;
+}
+
+inline SslExpected<void>
+SslCipherCtx::TryDecryptInPlace(std::span<const std::uint8_t> nonce,
+                                std::span<std::uint8_t> data,
+                                std::span<const std::uint8_t, AEAD_TAG_LENGTH> tag,
+                                std::span<const std::uint8_t> aad)
+{
+    if (EVP_DecryptInit_ex(*this, nullptr, nullptr, nullptr, nonce.data()) != 1)
+        return std::unexpected(SslError::capture("decrypt nonce update failed"));
+
+    if (!aad.empty())
+    {
+        int outlen = 0;
+        if (EVP_DecryptUpdate(*this, nullptr, &outlen, aad.data(), static_cast<int>(aad.size())) != 1)
+            return std::unexpected(SslError::capture(std::string(CipherName()) + " AAD processing failed"));
+    }
+
+    if (!data.empty())
+    {
+        int outlen = 0;
+        if (EVP_DecryptUpdate(*this, data.data(), &outlen, data.data(), static_cast<int>(data.size())) != 1)
+            return std::unexpected(SslError::capture(std::string(CipherName()) + " in-place decryption failed"));
+    }
+
+    if (EVP_CIPHER_CTX_ctrl(*this, EVP_CTRL_AEAD_SET_TAG, static_cast<int>(tag.size()),
+                            const_cast<std::uint8_t *>(tag.data())) != 1)
+        return std::unexpected(SslError::capture(std::string(CipherName()) + " tag setup failed"));
+
+    int outlen = 0;
+    std::uint8_t dummy = 0;
+    if (EVP_DecryptFinal_ex(*this, &dummy, &outlen) != 1)
+        return std::unexpected(
+            SslError::auth_tag(std::string(CipherName()) + " authentication failed (tag mismatch)"));
+
+    return {};
+}
+
 // ================================================================================================
 // One-shot member method implementations
 // ================================================================================================
+
+inline SslExpected<std::vector<std::uint8_t>>
+SslCipherCtx::TryEncryptAead(const AeadCipherTraits &traits,
+                             std::span<const std::uint8_t> key,
+                             std::span<const std::uint8_t> nonce,
+                             std::span<const std::uint8_t> plaintext,
+                             std::span<const std::uint8_t> aad)
+{
+    if (EVP_EncryptInit_ex(*this, traits.cipher_fn(), nullptr, nullptr, nullptr) != 1)
+        return std::unexpected(SslError::capture(std::string(traits.name) + " encrypt init failed"));
+
+    if (EVP_CIPHER_CTX_ctrl(*this, EVP_CTRL_AEAD_SET_IVLEN, static_cast<int>(nonce.size()), nullptr) != 1)
+        return std::unexpected(SslError::capture(std::string(CipherName()) + " IV length setup failed"));
+
+    if (EVP_EncryptInit_ex(*this, nullptr, nullptr, key.data(), nonce.data()) != 1)
+        return std::unexpected(SslError::capture(std::string(CipherName()) + " key/nonce setup failed"));
+
+    if (!aad.empty())
+    {
+        int outlen = 0;
+        if (EVP_EncryptUpdate(*this, nullptr, &outlen, aad.data(), static_cast<int>(aad.size())) != 1)
+            return std::unexpected(SslError::capture(std::string(CipherName()) + " AAD processing failed"));
+    }
+
+    std::vector<std::uint8_t> ciphertext(plaintext.size());
+    int outlen = 0;
+    if (!plaintext.empty())
+    {
+        if (EVP_EncryptUpdate(*this,
+                              ciphertext.data(),
+                              &outlen,
+                              plaintext.data(),
+                              static_cast<int>(plaintext.size()))
+            != 1)
+            return std::unexpected(SslError::capture(std::string(CipherName()) + " encryption failed"));
+        ciphertext.resize(static_cast<std::size_t>(outlen));
+    }
+
+    std::vector<std::uint8_t> final_and_tag(AEAD_TAG_LENGTH);
+    int final_len = 0;
+    if (EVP_EncryptFinal_ex(*this, final_and_tag.data(), &final_len) != 1)
+        return std::unexpected(SslError::capture(std::string(CipherName()) + " finalization failed"));
+
+    if (EVP_CIPHER_CTX_ctrl(
+            *this, EVP_CTRL_AEAD_GET_TAG, AEAD_TAG_LENGTH, final_and_tag.data() + final_len)
+        != 1)
+        return std::unexpected(SslError::capture(std::string(CipherName()) + " tag extraction failed"));
+
+    final_and_tag.resize(static_cast<std::size_t>(final_len) + AEAD_TAG_LENGTH);
+    ciphertext.insert(ciphertext.end(), final_and_tag.begin(), final_and_tag.end());
+    return ciphertext;
+}
 
 inline std::vector<std::uint8_t>
 SslCipherCtx::EncryptAead(const AeadCipherTraits &traits,
@@ -712,18 +978,68 @@ SslCipherCtx::EncryptAead(const AeadCipherTraits &traits,
                           std::span<const std::uint8_t> plaintext,
                           std::span<const std::uint8_t> aad)
 {
-    // Reinitialize cipher (context may have been used before)
-    InitEncrypt(traits);
-    SetIvLength(static_cast<int>(nonce.size()));
-    SetEncryptKeyAndNonce(key, nonce);
-    UpdateEncryptAad(aad);
+    if (auto r = TryEncryptAead(traits, key, nonce, plaintext, aad); r.has_value())
+        return *std::move(r);
+    else
+        throw SslException(std::move(r.error()));
+}
 
-    auto ciphertext = UpdateEncrypt(plaintext);
-    auto final_and_tag = FinalizeEncrypt();
+inline SslExpected<std::vector<std::uint8_t>>
+SslCipherCtx::TryDecryptAead(const AeadCipherTraits &traits,
+                             std::span<const std::uint8_t> key,
+                             std::span<const std::uint8_t> nonce,
+                             std::span<const std::uint8_t> ciphertext,
+                             std::span<const std::uint8_t> aad)
+{
+    if (ciphertext.size() < AEAD_TAG_LENGTH)
+        return std::unexpected(SslError::app(std::string(traits.name) + " ciphertext too short (missing tag)"));
 
-    // Combine ciphertext and final bytes + tag
-    ciphertext.insert(ciphertext.end(), final_and_tag.begin(), final_and_tag.end());
-    return ciphertext;
+    if (EVP_DecryptInit_ex(*this, traits.cipher_fn(), nullptr, nullptr, nullptr) != 1)
+        return std::unexpected(SslError::capture(std::string(traits.name) + " decrypt init failed"));
+
+    if (EVP_CIPHER_CTX_ctrl(*this, EVP_CTRL_AEAD_SET_IVLEN, static_cast<int>(nonce.size()), nullptr) != 1)
+        return std::unexpected(SslError::capture(std::string(CipherName()) + " IV length setup failed"));
+
+    if (EVP_DecryptInit_ex(*this, nullptr, nullptr, key.data(), nonce.data()) != 1)
+        return std::unexpected(SslError::capture(std::string(CipherName()) + " key/nonce setup failed"));
+
+    if (!aad.empty())
+    {
+        int outlen = 0;
+        if (EVP_DecryptUpdate(*this, nullptr, &outlen, aad.data(), static_cast<int>(aad.size())) != 1)
+            return std::unexpected(SslError::capture(std::string(CipherName()) + " AAD processing failed"));
+    }
+
+    const std::size_t ct_len = ciphertext.size() - AEAD_TAG_LENGTH;
+    auto ct_data = ciphertext.subspan(0, ct_len);
+    std::array<std::uint8_t, AEAD_TAG_LENGTH> tag{};
+    std::copy_n(ciphertext.data() + ct_len, AEAD_TAG_LENGTH, tag.begin());
+
+    std::vector<std::uint8_t> plaintext(ct_data.size());
+    int outlen = 0;
+    if (!ct_data.empty())
+    {
+        if (EVP_DecryptUpdate(*this,
+                              plaintext.data(),
+                              &outlen,
+                              ct_data.data(),
+                              static_cast<int>(ct_data.size()))
+            != 1)
+            return std::unexpected(SslError::capture(std::string(CipherName()) + " decryption failed"));
+        plaintext.resize(static_cast<std::size_t>(outlen));
+    }
+
+    if (EVP_CIPHER_CTX_ctrl(*this, EVP_CTRL_AEAD_SET_TAG, tag.size(), tag.data()) != 1)
+        return std::unexpected(SslError::capture(std::string(CipherName()) + " tag setup failed"));
+
+    std::vector<std::uint8_t> final_data(AEAD_TAG_LENGTH);
+    int final_len = 0;
+    if (EVP_DecryptFinal_ex(*this, final_data.data(), &final_len) != 1)
+        return std::unexpected(SslError::auth_tag(std::string(CipherName()) + " authentication failed (tag mismatch)"));
+
+    final_data.resize(static_cast<std::size_t>(final_len));
+    plaintext.insert(plaintext.end(), final_data.begin(), final_data.end());
+    return plaintext;
 }
 
 inline std::vector<std::uint8_t>
@@ -733,27 +1049,52 @@ SslCipherCtx::DecryptAead(const AeadCipherTraits &traits,
                           std::span<const std::uint8_t> ciphertext,
                           std::span<const std::uint8_t> aad)
 {
-    if (ciphertext.size() < AEAD_TAG_LENGTH)
-        throw SslException(std::string(traits.name) + " ciphertext too short (missing tag)");
+    if (auto r = TryDecryptAead(traits, key, nonce, ciphertext, aad); r.has_value())
+        return *std::move(r);
+    else
+        throw SslException(std::move(r.error()));
+}
 
-    // Reinitialize cipher (context may have been used before)
-    InitDecrypt(traits);
-    SetIvLength(static_cast<int>(nonce.size()));
-    SetDecryptKeyAndNonce(key, nonce);
-    UpdateDecryptAad(aad);
+inline SslExpected<std::array<std::uint8_t, AEAD_TAG_LENGTH>>
+SslCipherCtx::TryEncryptAeadInPlace(const AeadCipherTraits &traits,
+                                    std::span<const std::uint8_t> key,
+                                    std::span<const std::uint8_t> nonce,
+                                    std::span<std::uint8_t> data,
+                                    std::span<const std::uint8_t> aad)
+{
+    if (EVP_EncryptInit_ex(*this, traits.cipher_fn(), nullptr, nullptr, nullptr) != 1)
+        return std::unexpected(SslError::capture(std::string(traits.name) + " encrypt init failed"));
 
-    // Split ciphertext and tag
-    const std::size_t ct_len = ciphertext.size() - AEAD_TAG_LENGTH;
-    auto ct_data = ciphertext.subspan(0, ct_len);
-    std::array<std::uint8_t, AEAD_TAG_LENGTH> tag;
-    std::copy_n(ciphertext.data() + ct_len, AEAD_TAG_LENGTH, tag.begin());
+    if (EVP_CIPHER_CTX_ctrl(*this, EVP_CTRL_AEAD_SET_IVLEN, static_cast<int>(nonce.size()), nullptr) != 1)
+        return std::unexpected(SslError::capture(std::string(CipherName()) + " IV length setup failed"));
 
-    auto plaintext = UpdateDecrypt(ct_data);
-    auto final_bytes = FinalizeDecrypt(tag);
+    if (EVP_EncryptInit_ex(*this, nullptr, nullptr, key.data(), nonce.data()) != 1)
+        return std::unexpected(SslError::capture(std::string(CipherName()) + " key/nonce setup failed"));
 
-    // Combine plaintext and final bytes
-    plaintext.insert(plaintext.end(), final_bytes.begin(), final_bytes.end());
-    return plaintext;
+    if (!aad.empty())
+    {
+        int outlen = 0;
+        if (EVP_EncryptUpdate(*this, nullptr, &outlen, aad.data(), static_cast<int>(aad.size())) != 1)
+            return std::unexpected(SslError::capture(std::string(CipherName()) + " AAD processing failed"));
+    }
+
+    if (!data.empty())
+    {
+        int outlen = 0;
+        if (EVP_EncryptUpdate(*this, data.data(), &outlen, data.data(), static_cast<int>(data.size())) != 1)
+            return std::unexpected(SslError::capture(std::string(CipherName()) + " in-place encryption failed"));
+    }
+
+    int outlen = 0;
+    std::uint8_t dummy = 0;
+    if (EVP_EncryptFinal_ex(*this, &dummy, &outlen) != 1)
+        return std::unexpected(SslError::capture(std::string(CipherName()) + " finalization failed"));
+
+    std::array<std::uint8_t, AEAD_TAG_LENGTH> tag{};
+    if (EVP_CIPHER_CTX_ctrl(*this, EVP_CTRL_AEAD_GET_TAG, AEAD_TAG_LENGTH, tag.data()) != 1)
+        return std::unexpected(SslError::capture(std::string(CipherName()) + " tag extraction failed"));
+
+    return tag;
 }
 
 inline std::array<std::uint8_t, AEAD_TAG_LENGTH>
@@ -763,12 +1104,10 @@ SslCipherCtx::EncryptAeadInPlace(const AeadCipherTraits &traits,
                                  std::span<std::uint8_t> data,
                                  std::span<const std::uint8_t> aad)
 {
-    InitEncrypt(traits);
-    SetIvLength(static_cast<int>(nonce.size()));
-    SetEncryptKeyAndNonce(key, nonce);
-    UpdateEncryptAad(aad);
-    UpdateEncryptInPlace(data);
-    return FinalizeEncryptTag();
+    if (auto r = TryEncryptAeadInPlace(traits, key, nonce, data, aad); r.has_value())
+        return *std::move(r);
+    else
+        throw SslException(std::move(r.error()));
 }
 
 inline bool
@@ -791,6 +1130,17 @@ SslCipherCtx::DecryptAeadInPlace(const AeadCipherTraits &traits,
 //  Free function implementations
 // ================================================================================================
 
+inline SslExpected<std::vector<std::uint8_t>>
+TryEncryptAead(const AeadCipherTraits &traits,
+               std::span<const std::uint8_t> key,
+               std::span<const std::uint8_t> nonce,
+               std::span<const std::uint8_t> plaintext,
+               std::span<const std::uint8_t> aad)
+{
+    SslCipherCtx ctx;
+    return ctx.TryEncryptAead(traits, key, nonce, plaintext, aad);
+}
+
 inline std::vector<std::uint8_t>
 EncryptAead(const AeadCipherTraits &traits,
             std::span<const std::uint8_t> key,
@@ -802,6 +1152,17 @@ EncryptAead(const AeadCipherTraits &traits,
     return ctx.EncryptAead(traits, key, nonce, plaintext, aad);
 }
 
+inline SslExpected<std::vector<std::uint8_t>>
+TryDecryptAead(const AeadCipherTraits &traits,
+               std::span<const std::uint8_t> key,
+               std::span<const std::uint8_t> nonce,
+               std::span<const std::uint8_t> ciphertext,
+               std::span<const std::uint8_t> aad)
+{
+    SslCipherCtx ctx;
+    return ctx.TryDecryptAead(traits, key, nonce, ciphertext, aad);
+}
+
 inline std::vector<std::uint8_t>
 DecryptAead(const AeadCipherTraits &traits,
             std::span<const std::uint8_t> key,
@@ -811,6 +1172,17 @@ DecryptAead(const AeadCipherTraits &traits,
 {
     SslCipherCtx ctx;
     return ctx.DecryptAead(traits, key, nonce, ciphertext, aad);
+}
+
+inline SslExpected<std::array<std::uint8_t, AEAD_TAG_LENGTH>>
+TryEncryptAeadInPlace(const AeadCipherTraits &traits,
+                      std::span<const std::uint8_t> key,
+                      std::span<const std::uint8_t> nonce,
+                      std::span<std::uint8_t> data,
+                      std::span<const std::uint8_t> aad)
+{
+    SslCipherCtx ctx;
+    return ctx.TryEncryptAeadInPlace(traits, key, nonce, data, aad);
 }
 
 inline std::array<std::uint8_t, AEAD_TAG_LENGTH>
@@ -845,7 +1217,7 @@ EncryptEcb(const AeadCipherTraits &traits,
 
     // Initialize encryption with specified ECB cipher
     if (EVP_EncryptInit_ex(ctx, traits.cipher_fn(), nullptr, key.data(), nullptr) != 1)
-        throw SslException(std::string(traits.name) + " encrypt init failed");
+        ThrowSsl(std::string(traits.name) + " encrypt init failed");
 
     // Disable padding (we're encrypting exactly one block)
     EVP_CIPHER_CTX_set_padding(ctx, 0);
@@ -854,11 +1226,11 @@ EncryptEcb(const AeadCipherTraits &traits,
     std::array<std::uint8_t, 16> output;
     int outlen = 0;
     if (EVP_EncryptUpdate(ctx, output.data(), &outlen, block.data(), 16) != 1)
-        throw SslException(std::string(traits.name) + " encryption failed");
+        ThrowSsl(std::string(traits.name) + " encryption failed");
 
     int final_len = 0;
     if (EVP_EncryptFinal_ex(ctx, output.data() + outlen, &final_len) != 1)
-        throw SslException(std::string(traits.name) + " finalization failed");
+        ThrowSsl(std::string(traits.name) + " finalization failed");
 
     return output;
 }

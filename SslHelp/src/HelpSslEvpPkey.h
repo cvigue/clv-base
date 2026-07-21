@@ -58,7 +58,7 @@ struct SslEvpKey : SslWithRc<EVP_PKEY, EVP_PKEY_new, EVP_PKEY_free, EVP_PKEY_up_
     [[nodiscard]] int BitLength() const
     {
         if (Get() == nullptr)
-            throw SslException("SslEvpKey: null key");
+            ThrowSslApp("SslEvpKey: null key");
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
         return EVP_PKEY_get_bits(Get());
 #else
@@ -68,18 +68,18 @@ struct SslEvpKey : SslWithRc<EVP_PKEY, EVP_PKEY_new, EVP_PKEY_free, EVP_PKEY_up_
             {
                 const RSA *rsa = EVP_PKEY_get0_RSA(Get());
                 if (rsa == nullptr)
-                    throw SslException("SslEvpKey: invalid RSA key");
+                    ThrowSslApp("SslEvpKey: invalid RSA key");
                 return RSA_bits(rsa);
             }
         case EVP_PKEY_EC:
             {
                 const EC_KEY *ec = EVP_PKEY_get0_EC_KEY(Get());
                 if (ec == nullptr)
-                    throw SslException("SslEvpKey: invalid EC key");
+                    ThrowSslApp("SslEvpKey: invalid EC key");
                 return EC_GROUP_get_degree(EC_KEY_get0_group(ec));
             }
         default:
-            throw SslException("SslEvpKey: BitLength unsupported for key type");
+            ThrowSslApp("SslEvpKey: BitLength unsupported for key type");
         }
 #endif
     }
@@ -162,12 +162,12 @@ inline EVP_PKEY *SslEvpKey::EvpPkeyCreateRsa(int bits)
 {
     auto ctx = SslEvpPkeyCtx(EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr));
     if (EVP_PKEY_keygen_init(ctx) <= 0)
-        throw SslException("EVP_PKEY_keygen_init failed");
+        ThrowSsl("EVP_PKEY_keygen_init failed");
     if (EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, bits) <= 0)
-        throw SslException("EVP_PKEY_CTX_set_rsa_keygen_bits failed");
+        ThrowSsl("EVP_PKEY_CTX_set_rsa_keygen_bits failed");
     EVP_PKEY *pkey = nullptr;
     if (EVP_PKEY_keygen(ctx, &pkey) <= 0)
-        throw SslException("EVP_PKEY_keygen failed");
+        ThrowSsl("EVP_PKEY_keygen failed");
     return pkey;
 }
 

@@ -92,6 +92,18 @@ struct SslHmacCtx : SslNoRc<EVP_MAC_CTX, EVP_MAC_CTX_new, EVP_MAC_CTX_free>
     using SslNoRc<EVP_MAC_CTX, EVP_MAC_CTX_new, EVP_MAC_CTX_free>::SslNoRc;
 
     /**
+     * @brief Compute HMAC in a single operation (non-throwing)
+     * @tparam Traits HMAC traits defining the hash algorithm
+     * @param key Secret key for HMAC
+     * @param data Data to authenticate
+     * @return HMAC result (size determined by traits), or SslError on failure
+     * @note Primary implementation; Hmac is a thin throwing wrapper.
+     */
+    template <typename Traits = DefaultTraits>
+    [[nodiscard]] static SslExpected<std::array<std::uint8_t, Traits::output_size>>
+    TryHmac(std::span<const std::uint8_t> key, std::span<const std::uint8_t> data);
+
+    /**
      * @brief Compute HMAC in a single operation
      * @tparam Traits HMAC traits defining the hash algorithm
      * @param key Secret key for HMAC
@@ -101,8 +113,7 @@ struct SslHmacCtx : SslNoRc<EVP_MAC_CTX, EVP_MAC_CTX_new, EVP_MAC_CTX_free>
      */
     template <typename Traits = DefaultTraits>
     static std::array<std::uint8_t, Traits::output_size>
-    Hmac(std::span<const std::uint8_t> key,
-         std::span<const std::uint8_t> data);
+    Hmac(std::span<const std::uint8_t> key, std::span<const std::uint8_t> data);
 
     /**
      * @brief Constant-time comparison for HMAC verification
@@ -152,9 +163,9 @@ struct SslHmacCtx : SslNoRc<EVP_MAC_CTX, EVP_MAC_CTX_new, EVP_MAC_CTX_free>
 
 template <typename DefaultTraits>
 template <typename Traits>
-inline std::array<std::uint8_t, Traits::output_size>
-SslHmacCtx<DefaultTraits>::Hmac(std::span<const std::uint8_t> key,
-                                std::span<const std::uint8_t> data)
+inline SslExpected<std::array<std::uint8_t, Traits::output_size>>
+SslHmacCtx<DefaultTraits>::TryHmac(std::span<const std::uint8_t> key,
+                                   std::span<const std::uint8_t> data)
 {
     std::array<std::uint8_t, Traits::output_size> result;
     size_t out_len = result.size();
@@ -173,13 +184,25 @@ SslHmacCtx<DefaultTraits>::Hmac(std::span<const std::uint8_t> key,
                   &out_len)
         == nullptr)
     {
-        throw SslException("Hmac: EVP_Q_mac computation failed");
+        return std::unexpected(SslError::capture("Hmac: EVP_Q_mac computation failed"));
     }
 
     if (out_len != Traits::output_size)
-        throw SslException("Hmac: Unexpected output length");
+        return std::unexpected(SslError::app("Hmac: Unexpected output length"));
 
     return result;
+}
+
+template <typename DefaultTraits>
+template <typename Traits>
+inline std::array<std::uint8_t, Traits::output_size>
+SslHmacCtx<DefaultTraits>::Hmac(std::span<const std::uint8_t> key,
+                                std::span<const std::uint8_t> data)
+{
+    if (auto r = TryHmac<Traits>(key, data); r.has_value())
+        return *std::move(r);
+    else
+        throw SslException(std::move(r.error()));
 }
 
 template <typename DefaultTraits>
@@ -202,7 +225,7 @@ inline void SslHmacCtx<DefaultTraits>::Init(std::span<const std::uint8_t> key)
 {
     EVP_MAC *mac = EVP_MAC_fetch(nullptr, "HMAC", nullptr);
     if (!mac)
-        throw SslException("Init: EVP_MAC_fetch failed");
+        ThrowSsl("Init: EVP_MAC_fetch failed");
 
     // Reset context to use the fetched MAC
     this->Reset(EVP_MAC_CTX_new(mac));
@@ -213,14 +236,14 @@ inline void SslHmacCtx<DefaultTraits>::Init(std::span<const std::uint8_t> key)
         OSSL_PARAM_construct_end()};
 
     if (EVP_MAC_init(*this, key.data(), key.size(), params) != 1)
-        throw SslException("Init: EVP_MAC_init failed");
+        ThrowSsl("Init: EVP_MAC_init failed");
 }
 
 template <typename DefaultTraits>
 inline void SslHmacCtx<DefaultTraits>::Update(std::span<const std::uint8_t> data)
 {
     if (EVP_MAC_update(*this, data.data(), data.size()) != 1)
-        throw SslException("Update: EVP_MAC_update failed");
+        ThrowSsl("Update: EVP_MAC_update failed");
 }
 
 template <typename DefaultTraits>
@@ -231,10 +254,10 @@ inline std::array<std::uint8_t, Traits::output_size> SslHmacCtx<DefaultTraits>::
     size_t out_len = 0;
 
     if (EVP_MAC_final(*this, result.data(), &out_len, result.size()) != 1)
-        throw SslException("Final: EVP_MAC_final failed");
+        ThrowSsl("Final: EVP_MAC_final failed");
 
     if (out_len != Traits::output_size)
-        throw SslException("Final: Unexpected output length");
+        ThrowSslApp("Final: Unexpected output length");
 
     return result;
 }
@@ -244,6 +267,19 @@ inline std::array<std::uint8_t, Traits::output_size> SslHmacCtx<DefaultTraits>::
 // ================================================================================================
 
 /**
+ * @brief Compute HMAC-SHA256 in a single operation (non-throwing)
+ * @param key Secret key for HMAC
+ * @param data Data to authenticate
+ * @return 32-byte HMAC-SHA256 result, or SslError on failure
+ * @note Primary implementation; HmacSha256 is a thin throwing wrapper.
+ */
+[[nodiscard]] inline SslExpected<std::array<std::uint8_t, 32>>
+TryHmacSha256(std::span<const std::uint8_t> key, std::span<const std::uint8_t> data)
+{
+    return SslHmacCtx<HmacSha256Traits>::TryHmac(key, data);
+}
+
+/**
  * @brief Compute HMAC-SHA256 in a single operation (free function)
  * @param key Secret key for HMAC
  * @param data Data to authenticate
@@ -251,10 +287,22 @@ inline std::array<std::uint8_t, Traits::output_size> SslHmacCtx<DefaultTraits>::
  * @throws SslException on failure
  */
 inline std::array<std::uint8_t, 32>
-HmacSha256(std::span<const std::uint8_t> key,
-           std::span<const std::uint8_t> data)
+HmacSha256(std::span<const std::uint8_t> key, std::span<const std::uint8_t> data)
 {
     return SslHmacCtx<HmacSha256Traits>::Hmac(key, data);
+}
+
+/**
+ * @brief Compute HMAC-SHA512 in a single operation (non-throwing)
+ * @param key Secret key for HMAC
+ * @param data Data to authenticate
+ * @return 64-byte HMAC-SHA512 result, or SslError on failure
+ * @note Primary implementation; HmacSha512 is a thin throwing wrapper.
+ */
+[[nodiscard]] inline SslExpected<std::array<std::uint8_t, 64>>
+TryHmacSha512(std::span<const std::uint8_t> key, std::span<const std::uint8_t> data)
+{
+    return SslHmacCtx<HmacSha512Traits>::TryHmac(key, data);
 }
 
 /**
@@ -265,10 +313,22 @@ HmacSha256(std::span<const std::uint8_t> key,
  * @throws SslException on failure
  */
 inline std::array<std::uint8_t, 64>
-HmacSha512(std::span<const std::uint8_t> key,
-           std::span<const std::uint8_t> data)
+HmacSha512(std::span<const std::uint8_t> key, std::span<const std::uint8_t> data)
 {
     return SslHmacCtx<HmacSha512Traits>::Hmac(key, data);
+}
+
+/**
+ * @brief Compute HMAC-MD5 in a single operation (non-throwing)
+ * @param key Secret key for HMAC
+ * @param data Data to authenticate
+ * @return 16-byte HMAC-MD5 result, or SslError on failure
+ * @note Primary implementation; HmacMd5 is a thin throwing wrapper.
+ */
+[[nodiscard]] inline SslExpected<std::array<std::uint8_t, 16>>
+TryHmacMd5(std::span<const std::uint8_t> key, std::span<const std::uint8_t> data)
+{
+    return SslHmacCtx<HmacMd5Traits>::TryHmac(key, data);
 }
 
 /**
@@ -279,10 +339,22 @@ HmacSha512(std::span<const std::uint8_t> key,
  * @throws SslException on failure
  */
 inline std::array<std::uint8_t, 16>
-HmacMd5(std::span<const std::uint8_t> key,
-        std::span<const std::uint8_t> data)
+HmacMd5(std::span<const std::uint8_t> key, std::span<const std::uint8_t> data)
 {
     return SslHmacCtx<HmacMd5Traits>::Hmac(key, data);
+}
+
+/**
+ * @brief Compute HMAC-SHA1 in a single operation (non-throwing)
+ * @param key Secret key for HMAC
+ * @param data Data to authenticate
+ * @return 20-byte HMAC-SHA1 result, or SslError on failure
+ * @note Primary implementation; HmacSha1 is a thin throwing wrapper.
+ */
+[[nodiscard]] inline SslExpected<std::array<std::uint8_t, 20>>
+TryHmacSha1(std::span<const std::uint8_t> key, std::span<const std::uint8_t> data)
+{
+    return SslHmacCtx<HmacSha1Traits>::TryHmac(key, data);
 }
 
 /**
@@ -293,8 +365,7 @@ HmacMd5(std::span<const std::uint8_t> key,
  * @throws SslException on failure
  */
 inline std::array<std::uint8_t, 20>
-HmacSha1(std::span<const std::uint8_t> key,
-         std::span<const std::uint8_t> data)
+HmacSha1(std::span<const std::uint8_t> key, std::span<const std::uint8_t> data)
 {
     return SslHmacCtx<HmacSha1Traits>::Hmac(key, data);
 }
