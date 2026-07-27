@@ -903,7 +903,8 @@ SslCipherCtx::TryDecryptInPlace(std::span<const std::uint8_t> nonce,
     }
 
     if (EVP_CIPHER_CTX_ctrl(*this, EVP_CTRL_AEAD_SET_TAG, static_cast<int>(tag.size()),
-                            const_cast<std::uint8_t *>(tag.data())) != 1)
+                            const_cast<std::uint8_t *>(tag.data()))
+        != 1)
         return std::unexpected(SslError::capture(std::string(CipherName()) + " tag setup failed"));
 
     int outlen = 0;

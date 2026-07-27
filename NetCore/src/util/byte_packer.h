@@ -154,8 +154,7 @@ template <std::unsigned_integral... Ts>
         {
             result[offset++] = bytes[i];
         }
-    }(),
-     ...);
+    }(), ...);
 
     return result;
 }
