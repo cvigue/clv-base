@@ -10,34 +10,49 @@
 namespace clv {
 
 /**
- * @brief Lightweight rate limiter for log messages (single-threaded).
+ * @brief Lightweight single-threaded rate gate.
  *
- * Tracks a timestamp; Due() returns true at most once per interval.
- * Designed for hot-path warning suppression (e.g., anti-replay "too old").
+ * Tracks a timestamp; Due() returns true at most once per interval. Used both
+ * for hot-path log suppression (e.g., anti-replay "too old") and to throttle
+ * real work (e.g., per-peer float catch-up).
+ *
+ * The interval is accepted as any @c std::chrono::duration and stored at the
+ * clock's native tick resolution, so callers can gate at seconds, milliseconds,
+ * or finer without picking a unit at the type level.
  *
  * @tparam Clock  Clock type (defaults to steady_clock; override for testing).
  */
 template <typename Clock = std::chrono::steady_clock>
 struct RateLimiter
 {
-    RateLimiter(std::chrono::seconds interval = std::chrono::seconds{1}) : log_interval_(interval)
+    using Duration = typename Clock::duration;
+    using TimePoint = typename Clock::time_point;
+
+    RateLimiter() noexcept : interval_(std::chrono::duration_cast<Duration>(std::chrono::seconds{1}))
     {
     }
 
-    bool Due(typename Clock::time_point now = Clock::now()) noexcept
+    template <typename Rep, typename Period>
+    explicit RateLimiter(std::chrono::duration<Rep, Period> interval) noexcept
+        : interval_(std::chrono::duration_cast<Duration>(interval))
     {
-        return DueImpl(now, log_interval_);
     }
 
-    bool Due(typename Clock::time_point now,
-             std::chrono::seconds interval) noexcept
+    bool Due(TimePoint now = Clock::now()) noexcept
     {
-        return DueImpl(now, interval);
+        return DueImpl(now, interval_);
     }
 
-    bool Due(std::chrono::seconds interval) noexcept
+    template <typename Rep, typename Period>
+    bool Due(TimePoint now, std::chrono::duration<Rep, Period> interval) noexcept
     {
-        return DueImpl(Clock::now(), interval);
+        return DueImpl(now, std::chrono::duration_cast<Duration>(interval));
+    }
+
+    template <typename Rep, typename Period>
+    bool Due(std::chrono::duration<Rep, Period> interval) noexcept
+    {
+        return DueImpl(Clock::now(), std::chrono::duration_cast<Duration>(interval));
     }
 
     std::int64_t SuppressedCount() noexcept
@@ -48,12 +63,11 @@ struct RateLimiter
     }
 
   private:
-    bool DueImpl(typename Clock::time_point now,
-                 std::chrono::seconds interval) noexcept
+    bool DueImpl(TimePoint now, Duration interval) noexcept
     {
-        if (now - last_log_time_ >= interval)
+        if (now - last_time_ >= interval)
         {
-            last_log_time_ = now;
+            last_time_ = now;
             return true;
         }
         ++suppressed_count_;
@@ -61,8 +75,8 @@ struct RateLimiter
     }
 
   private:
-    std::chrono::seconds log_interval_{1};
-    typename Clock::time_point last_log_time_{};
+    Duration interval_;
+    TimePoint last_time_{};
     std::uint64_t suppressed_count_{0};
 };
 

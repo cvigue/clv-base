@@ -101,3 +101,42 @@ TEST(RateLimiterTest, SuppressedCount)
     EXPECT_EQ(limiter.SuppressedCount(), 2);
     EXPECT_EQ(limiter.SuppressedCount(), 0); // count resets after retrieval
 }
+
+TEST(RateLimiterTest, Due_MillisecondInterval)
+{
+    RateLimiter<> limiter{std::chrono::milliseconds{500}};
+    auto t0 = std::chrono::steady_clock::now();
+
+    EXPECT_TRUE(limiter.Due(t0));
+
+    // 200ms later — within the 500ms interval
+    EXPECT_FALSE(limiter.Due(t0 + std::chrono::milliseconds{200}));
+
+    // 600ms after initial — past the 500ms interval
+    EXPECT_TRUE(limiter.Due(t0 + std::chrono::milliseconds{600}));
+}
+
+TEST(RateLimiterTest, Due_NanosecondInterval)
+{
+    RateLimiter<> limiter{std::chrono::nanoseconds{250}};
+    auto t0 = std::chrono::steady_clock::now();
+
+    EXPECT_TRUE(limiter.Due(t0));
+    EXPECT_FALSE(limiter.Due(t0 + std::chrono::nanoseconds{100}));
+    EXPECT_TRUE(limiter.Due(t0 + std::chrono::nanoseconds{300}));
+}
+
+TEST(RateLimiterTest, Due_MixedUnitOverride)
+{
+    // Stored interval in seconds, override supplied in milliseconds.
+    RateLimiter<> limiter{std::chrono::seconds{10}};
+    auto t0 = std::chrono::steady_clock::now();
+
+    EXPECT_TRUE(limiter.Due(t0));
+
+    auto t1 = t0 + std::chrono::milliseconds{300};
+    EXPECT_TRUE(limiter.Due(t1, std::chrono::milliseconds{250}));
+
+    // Back on the stored 10s interval: 300ms after t1 is still suppressed.
+    EXPECT_FALSE(limiter.Due(t1 + std::chrono::milliseconds{300}));
+}
