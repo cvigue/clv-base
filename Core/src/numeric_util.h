@@ -80,6 +80,51 @@ constexpr T clamp_to_type(U value) noexcept
 }
 
 /**
+ * @brief Returns true when @p value lies in the inclusive range [@p low, @p high].
+ * @details Integral comparisons are done in a common type so a wider source
+ *          (for example @c unsigned @c long against a @c uint16_t port range)
+ *          does not narrow. An inverted range (@p high < @p low) is empty.
+ */
+template <typename T, typename U>
+    requires numeric_type<T> && numeric_type<U>
+[[nodiscard]] constexpr bool in_range(U value, T low, T high) noexcept
+{
+    if (high < low)
+        return false;
+
+    if constexpr (std::is_integral_v<T> && std::is_integral_v<U>)
+    {
+        if constexpr (std::is_signed_v<U> && std::is_unsigned_v<T>)
+        {
+            if (value < 0)
+                return false;
+            using Wide = std::common_type_t<std::make_unsigned_t<U>, T>;
+            const auto wide = static_cast<Wide>(value);
+            return wide >= static_cast<Wide>(low) && wide <= static_cast<Wide>(high);
+        }
+        else if constexpr (std::is_unsigned_v<U> && std::is_signed_v<T>)
+        {
+            using Wide = std::common_type_t<U, std::make_unsigned_t<T>>;
+            if (value > static_cast<Wide>(std::numeric_limits<T>::max()))
+                return false;
+            const auto narrowed = static_cast<T>(value);
+            return narrowed >= low && narrowed <= high;
+        }
+        else
+        {
+            using Wide = std::common_type_t<T, U>;
+            const auto wide = static_cast<Wide>(value);
+            return wide >= static_cast<Wide>(low) && wide <= static_cast<Wide>(high);
+        }
+    }
+    else
+    {
+        const auto wide = static_cast<long double>(value);
+        return wide >= static_cast<long double>(low) && wide <= static_cast<long double>(high);
+    }
+}
+
+/**
  * @brief Returns true if T can represent @p value exactly, with no narrowing or overflow.
  *
  * @tparam T  Destination numeric type.
@@ -93,6 +138,8 @@ template <typename T, typename U>
 {
     if constexpr (safe_conversion<T, U>)
         return true;
+    else if constexpr (std::is_integral_v<T> && std::is_integral_v<U>)
+        return in_range(value, std::numeric_limits<T>::lowest(), std::numeric_limits<T>::max());
     else
         return static_cast<U>(clamp_to_type<T>(value)) == value;
 }

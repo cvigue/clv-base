@@ -271,6 +271,19 @@ TEST(NumericUtil, CheckedCast_FloatingPoint)
     }
 }
 
+TEST(NumericUtil, InRange_InclusiveBounds)
+{
+    EXPECT_TRUE(in_range(1ul, std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
+    EXPECT_TRUE(in_range(65535ul, std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
+    EXPECT_FALSE(in_range(0ul, std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
+    EXPECT_FALSE(in_range(65536ul, std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
+    EXPECT_FALSE(in_range(-1, std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
+    EXPECT_FALSE(in_range(5, 10, 1));
+}
+
+static_assert(in_range(443ul, std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
+static_assert(!in_range(0ul, std::uint16_t{1}, std::numeric_limits<std::uint16_t>::max()));
+
 // Verify constexpr evaluation compiles.
 static_assert(can_hold<int>(42LL), "42LL fits in int");
 static_assert(!can_hold<int>(5'000'000'000LL), "5e9 does not fit in int");
